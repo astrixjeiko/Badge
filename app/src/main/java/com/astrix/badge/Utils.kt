@@ -6,6 +6,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.edit
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 object CurrencyStore {
     val options = listOf("₱", "$", "€", "£", "¥", "₩", "₹")
@@ -26,6 +29,9 @@ object CurrencyStore {
 }
 
 fun money(v: Double): String = CurrencyStore.symbol + "%,.2f".format(v)
+
+fun formatTime(timestamp: Long): String =
+    SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(timestamp))
 
 object Periods {
     // Returns the start time (in ms) of the current day/week/month/year

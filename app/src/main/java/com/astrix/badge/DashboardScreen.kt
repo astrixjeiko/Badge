@@ -11,9 +11,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -23,6 +20,7 @@ fun DashboardScreen(vm: BadgeViewModel) {
     val quick by vm.quickButtons.collectAsState()
     var text by remember { mutableStateOf("") }
     var cat by remember { mutableStateOf<Long?>(null) }
+    var note by remember { mutableStateOf("") }
 
     fun total(period: String) =
         expenses.filter { it.timestamp >= Periods.startOf(period) }.sumOf { it.amount }
@@ -74,13 +72,22 @@ fun DashboardScreen(vm: BadgeViewModel) {
             Spacer(Modifier.height(8.dp))
             CategoryChips(categories, cat) { cat = it }
             Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text("Label (e.g. Lunch)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AmountField(text, { text = it }, Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = {
                     text.toDoubleOrNull()?.takeIf { it > 0 }?.let {
-                        vm.addExpense(it, cat)
+                        vm.addExpense(it, cat, note.trim())
                         text = ""
+                        note = ""
                     }
                 }) { Text("Add") }
             }
@@ -90,7 +97,7 @@ fun DashboardScreen(vm: BadgeViewModel) {
 
         items(expenses.take(30), key = { it.id }) { e ->
             val catName = categories.firstOrNull { it.id == e.categoryId }?.name
-            val time = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(e.timestamp))
+            val time = formatTime(e.timestamp)
             ListItem(
                 headlineContent = { Text(money(e.amount)) },
                 supportingContent = {
