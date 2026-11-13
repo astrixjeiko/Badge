@@ -5,12 +5,17 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import androidx.glance.appwidget.updateAll
 
 class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = BadgeDatabase.get(app).dao()
 
     private fun <T> Flow<T>.asState(initial: T) =
         stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), initial)
+
+    private fun refreshWidget() = viewModelScope.launch {
+        BadgeWidget().updateAll(getApplication<Application>())
+    }
 
     val expenses = dao.observeExpenses().asState(emptyList())
     val categories = dao.observeCategories().asState(emptyList())
@@ -29,16 +34,22 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addExpense(amount: Double, categoryId: Long?, note: String = "") = viewModelScope.launch {
         dao.insertExpense(Expense(amount = amount, categoryId = categoryId, note = note))
+        refreshWidget()
     }
-    fun deleteExpense(e: Expense) = viewModelScope.launch { dao.deleteExpense(e) }
+    fun deleteExpense(e: Expense) = viewModelScope.launch { dao.deleteExpense(e)
+        refreshWidget()
+    }
 
     fun addCategory(name: String) = viewModelScope.launch { dao.insertCategory(Category(name = name)) }
     fun deleteCategory(c: Category) = viewModelScope.launch { dao.deleteCategory(c) }
 
     fun addQuickButton(label: String, amount: Double, categoryId: Long?) = viewModelScope.launch {
         dao.insertQuickButton(QuickButton(label = label, amount = amount, categoryId = categoryId))
+        refreshWidget()
     }
-    fun deleteQuickButton(b: QuickButton) = viewModelScope.launch { dao.deleteQuickButton(b) }
+    fun deleteQuickButton(b: QuickButton) = viewModelScope.launch { dao.deleteQuickButton(b)
+        refreshWidget()
+    }
 
     fun addBudget(period: String, categoryId: Long?, limit: Double) = viewModelScope.launch {
         dao.insertBudget(Budget(period = period, limitAmount = limit, categoryId = categoryId))
