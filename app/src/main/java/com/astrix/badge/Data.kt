@@ -39,7 +39,9 @@ data class Budget(
 
 @Dao
 interface BadgeDao {
-    @Insert suspend fun insertExpense(e: Expense)
+    @Insert suspend fun insertExpense(e: Expense): Long
+    @Query("DELETE FROM expenses WHERE id = :id")
+    suspend fun deleteExpenseById(id: Long)
     @Delete suspend fun deleteExpense(e: Expense)
     @Query("SELECT * FROM expenses ORDER BY timestamp DESC")
     fun observeExpenses(): Flow<List<Expense>>
