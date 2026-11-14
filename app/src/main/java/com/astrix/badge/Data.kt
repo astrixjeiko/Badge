@@ -2,6 +2,8 @@ package com.astrix.badge
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "categories")
@@ -34,7 +36,8 @@ data class Budget(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val period: String,
     val limitAmount: Double,
-    val categoryId: Long?
+    val categoryId: Long?,
+    @ColumnInfo(defaultValue = "''") val name: String = ""
 )
 
 @Dao
@@ -66,11 +69,21 @@ interface BadgeDao {
     @Delete suspend fun deleteBudget(b: Budget)
     @Query("SELECT * FROM budgets")
     fun observeBudgets(): Flow<List<Budget>>
+    @Update suspend fun updateExpense(e: Expense)
+    @Update suspend fun updateBudget(b: Budget)
+    @Update suspend fun updateCategory(c: Category)
+    @Update suspend fun updateQuickButton(b: QuickButton)
+}
+
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE budgets ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+    }
 }
 
 @Database(
     entities = [Expense::class, Category::class, QuickButton::class, Budget::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class BadgeDatabase : RoomDatabase() {
@@ -81,7 +94,7 @@ abstract class BadgeDatabase : RoomDatabase() {
         fun get(context: Context): BadgeDatabase = INSTANCE ?: synchronized(this) {
             INSTANCE ?: Room.databaseBuilder(
                 context.applicationContext, BadgeDatabase::class.java, "badge.db"
-            ).build().also { INSTANCE = it }
+            ).addMigrations(MIGRATION_1_2).build().also { INSTANCE = it }
         }
     }
 }

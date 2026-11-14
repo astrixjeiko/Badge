@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +22,7 @@ fun DashboardScreen(vm: BadgeViewModel) {
     var text by remember { mutableStateOf("") }
     var cat by remember { mutableStateOf<Long?>(null) }
     var note by remember { mutableStateOf("") }
+    var editing by remember { mutableStateOf<Expense?>(null) }
 
     fun total(period: String) =
         expenses.filter { it.timestamp >= Periods.startOf(period) }.sumOf { it.amount }
@@ -104,11 +106,25 @@ fun DashboardScreen(vm: BadgeViewModel) {
                     Text(listOfNotNull(catName, e.note.ifBlank { null }, time).joinToString(" · "))
                 },
                 trailingContent = {
-                    IconButton(onClick = { vm.deleteExpense(e) }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete")
+                    Row {
+                        IconButton(onClick = { editing = e }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit")
+                        }
+                        IconButton(onClick = { vm.deleteExpense(e) }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete")
+                        }
                     }
                 }
             )
         }
+    }
+
+    editing?.let { e ->
+        EditExpenseDialog(
+            expense = e,
+            categories = categories,
+            onDismiss = { editing = null },
+            onSave = { vm.updateExpense(it); editing = null }
+        )
     }
 }

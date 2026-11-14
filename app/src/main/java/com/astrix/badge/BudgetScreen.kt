@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,13 +20,14 @@ fun BudgetScreen(vm: BadgeViewModel) {
     val budgets by vm.budgets.collectAsState()
     val expenses by vm.expenses.collectAsState()
     val categories by vm.categories.collectAsState()
-    var showDialog by remember { mutableStateOf(false) }
+    var showAdd by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Budget?>(null) }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { Button(onClick = { showDialog = true }) { Text("+ New budget") } }
+        item { Button(onClick = { showAdd = true }) { Text("+ New budget") } }
         items(budgets, key = { it.id }) { b ->
             val start = Periods.startOf(b.period)
             val spent = expenses.filter {
@@ -32,20 +35,33 @@ fun BudgetScreen(vm: BadgeViewModel) {
             }.sumOf { it.amount }
             val ratio = (spent / b.limitAmount).toFloat().coerceIn(0f, 1f)
             val over = spent > b.limitAmount
-            val name = categories.firstOrNull { it.id == b.categoryId }?.name ?: "All spending"
+            val catName = categories.firstOrNull { it.id == b.categoryId }?.name ?: "All spending"
+            val detail = catName + " · " + b.period.lowercase()
 
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            name + " · " + b.period.lowercase(),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f)
-                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                b.name.ifBlank { detail },
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            if (b.name.isNotBlank()) {
+                                Text(
+                                    detail,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        IconButton(onClick = { editing = b }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit")
+                        }
                         IconButton(onClick = { vm.deleteBudget(b) }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete")
                         }
                     }
+                    Spacer(Modifier.height(4.dp))
                     LinearProgressIndicator(
                         progress = { ratio },
                         modifier = Modifier.fillMaxWidth(),
@@ -58,42 +74,78 @@ fun BudgetScreen(vm: BadgeViewModel) {
         }
     }
 
-    if (showDialog) {
-        AddBudgetDialog(
+    if (showAdd) {
+        BudgetDialog(
+            title = "New budget",
+            initial = null,
             categories = categories,
-            onDismiss = { showDialog = false },
-            onSave = { p, c, a -> vm.addBudget(p, c, a); showDialog = false }
+            onDismiss = { showAdd = false },
+            onSave = { n, p, c, a -> vm.addBudget(n, p, c, a); showAdd = false }
+        )
+    }
+
+    editing?.let { b ->
+        BudgetDialog(
+            title = "Edit budget",
+            initial = b,
+            categories = categories,
+            onDismiss = { editing = null },
+            onSave = { n, p, c, a ->
+                vm.updateBudget(b.copy(name = n, period = p, categoryId = c, limitAmount = a))
+                editing = null
+            }
         )
     }
 }
 
+// One dialog for both adding (initial = null) and editing a budget
 @Composable
-fun AddBudgetDialog(
+fun BudgetDialog(
+    title: String,
+    initial: Budget?,
     categories: List<Category>,
     onDismiss: () -> Unit,
-    onSave: (String, Long?, Double) -> Unit
+    onSave: (String, String, Long?, Double) -> Unit
 ) {
-    var period by remember { mutableStateOf("MONTH") }
-    var cat by remember { mutableStateOf<Long?>(null) }
-    var amount by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf(initial?.name ?: "") }
+    var period by remember { mutableStateOf(initial?.period ?: "MONTH") }
+    var cat by remember { mutableStateOf(initial?.categoryId) }
+    var amount by remember { mutableStateOf(initial?.let { plainAmount(it.limitAmount) } ?: "") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New budget") },
+        title = { Text(title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     listOf("DAY", "WEEK", "MONTH", "YEAR").forEach { p ->
-                        FilterChip(period == p, { period = p }, { Text(p.lowercase().replaceFirstChar { it.uppercase() }) })
+                        FilterChip(
+                            period == p,
+                            { period = p },
+                            { Text(p.lowercase().replaceFirstChar { it.uppercase() }) }
+                        )
                     }
                 }
                 CategoryChips(categories, cat, anyLabel = "All") { cat = it }
-                AmountField(amount, { amount = it }, label = "Limit")
+                AmountField(amount, { amount = it }, Modifier.fillMaxWidth(), label = "Limit")
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { onSave(period, cat, it) }
+                amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { onSave(name.trim(), period, cat, it) }
             }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }

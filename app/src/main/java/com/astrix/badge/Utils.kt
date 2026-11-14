@@ -9,6 +9,9 @@ import androidx.core.content.edit
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
+
+const val MAX_QUICK_BUTTONS = 8
 
 object CurrencyStore {
     val options = listOf("₱", "$", "€", "£", "¥", "₩", "₹")
@@ -49,3 +52,42 @@ object Periods {
         return c.timeInMillis
     }
 }
+
+// "20.00" style text for editing (always uses a dot, whatever the phone's language)
+fun plainAmount(v: Double): String = String.format(Locale.US, "%.2f", v)
+
+fun formatDate(timestamp: Long): String =
+    SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(timestamp))
+
+// The date picker works in UTC, so these two convert to and from your local time
+fun toPickerMillis(timestamp: Long): Long {
+    val local = Calendar.getInstance().apply { timeInMillis = timestamp }
+    return Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+        clear()
+        set(local.get(Calendar.YEAR), local.get(Calendar.MONTH), local.get(Calendar.DAY_OF_MONTH))
+    }.timeInMillis
+}
+
+fun fromPickerMillis(pickerMillis: Long, originalTimestamp: Long): Long {
+    val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = pickerMillis }
+    return Calendar.getInstance().apply {
+        timeInMillis = originalTimestamp
+        set(utc.get(Calendar.YEAR), utc.get(Calendar.MONTH), utc.get(Calendar.DAY_OF_MONTH))
+    }.timeInMillis
+}
+
+fun formatClock(timestamp: Long): String =
+    SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(timestamp))
+
+fun hourOf(timestamp: Long): Int =
+    Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.HOUR_OF_DAY)
+
+fun minuteOf(timestamp: Long): Int =
+    Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.MINUTE)
+
+fun withTime(timestamp: Long, hour: Int, minute: Int): Long =
+    Calendar.getInstance().apply {
+        timeInMillis = timestamp
+        set(Calendar.HOUR_OF_DAY, hour)
+        set(Calendar.MINUTE, minute)
+    }.timeInMillis

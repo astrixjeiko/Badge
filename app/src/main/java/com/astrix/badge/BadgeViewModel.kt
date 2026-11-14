@@ -44,6 +44,7 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteCategory(c: Category) = viewModelScope.launch { dao.deleteCategory(c) }
 
     fun addQuickButton(label: String, amount: Double, categoryId: Long?) = viewModelScope.launch {
+        if (quickButtons.value.size >= MAX_QUICK_BUTTONS) return@launch
         dao.insertQuickButton(QuickButton(label = label, amount = amount, categoryId = categoryId))
         refreshWidget()
     }
@@ -51,8 +52,22 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
         refreshWidget()
     }
 
-    fun addBudget(period: String, categoryId: Long?, limit: Double) = viewModelScope.launch {
-        dao.insertBudget(Budget(period = period, limitAmount = limit, categoryId = categoryId))
+    fun addBudget(name: String, period: String, categoryId: Long?, limit: Double) = viewModelScope.launch {
+        dao.insertBudget(Budget(name = name, period = period, limitAmount = limit, categoryId = categoryId))
     }
+
+    fun updateBudget(b: Budget) = viewModelScope.launch { dao.updateBudget(b) }
     fun deleteBudget(b: Budget) = viewModelScope.launch { dao.deleteBudget(b) }
+
+    fun updateExpense(e: Expense) = viewModelScope.launch {
+        dao.updateExpense(e)
+        refreshWidget()
+    }
+
+    fun updateCategory(c: Category) = viewModelScope.launch { dao.updateCategory(c) }
+
+    fun updateQuickButton(b: QuickButton) = viewModelScope.launch {
+        dao.updateQuickButton(b)
+        refreshWidget()
+    }
 }
