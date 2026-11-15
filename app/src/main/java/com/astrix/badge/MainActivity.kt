@@ -1,10 +1,10 @@
 package com.astrix.badge
 
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -16,22 +16,24 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import com.astrix.badge.ui.theme.BadgeTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        if (savedInstanceState == null) {
+            val start = SystemClock.uptimeMillis()
+            splash.setKeepOnScreenCondition { SystemClock.uptimeMillis() - start < 700 }
+        }
+
         enableEdgeToEdge()
         CurrencyStore.load(this)
         setContent { BadgeTheme { BadgeApp() } }
-    }
-    private val vm: BadgeViewModel by viewModels()
-
-    override fun onResume() {
-        super.onResume()
-        vm.refreshPeriods()
     }
 }
 
