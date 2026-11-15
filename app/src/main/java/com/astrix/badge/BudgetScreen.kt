@@ -18,7 +18,6 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun BudgetScreen(vm: BadgeViewModel) {
     val budgets by vm.budgets.collectAsState()
-    val expenses by vm.expenses.collectAsState()
     val categories by vm.categories.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Budget?>(null) }
@@ -27,12 +26,11 @@ fun BudgetScreen(vm: BadgeViewModel) {
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { Button(onClick = { showAdd = true }) { Text("+ New budget") } }
+        item { Button(onClick = { showAdd = true }) { Text("Add budget") } }
         items(budgets, key = { it.id }) { b ->
-            val start = Periods.startOf(b.period)
-            val spent = expenses.filter {
-                it.timestamp >= start && (b.categoryId == null || it.categoryId == b.categoryId)
-            }.sumOf { it.amount }
+            val spent by remember(b.period, b.categoryId) {
+                vm.spentFlow(b.period, b.categoryId)
+            }.collectAsState(initial = 0.0)
             val ratio = (spent / b.limitAmount).toFloat().coerceIn(0f, 1f)
             val over = spent > b.limitAmount
             val catName = categories.firstOrNull { it.id == b.categoryId }?.name ?: "All spending"

@@ -12,6 +12,7 @@ import java.util.Locale
 import java.util.TimeZone
 
 const val MAX_QUICK_BUTTONS = 8
+const val RECENT_LIMIT = 5
 
 object CurrencyStore {
     val options = listOf("₱", "$", "€", "£", "¥", "₩", "₹")
@@ -91,3 +92,85 @@ fun withTime(timestamp: Long, hour: Int, minute: Int): Long =
         set(Calendar.HOUR_OF_DAY, hour)
         set(Calendar.MINUTE, minute)
     }.timeInMillis
+
+sealed class HistoryItem {
+    data class Header(val dayStart: Long) : HistoryItem()
+    data class Entry(val expense: Expense) : HistoryItem()
+}
+
+fun startOfDay(timestamp: Long): Long = Calendar.getInstance().apply {
+    timeInMillis = timestamp
+    set(Calendar.HOUR_OF_DAY, 0)
+    set(Calendar.MINUTE, 0)
+    set(Calendar.SECOND, 0)
+    set(Calendar.MILLISECOND, 0)
+}.timeInMillis
+
+fun dayLabel(dayStart: Long): String {
+    val today = startOfDay(System.currentTimeMillis())
+    val yesterday = startOfDay(today - 3_600_000L)
+    return when (dayStart) {
+        today -> "Today"
+        yesterday -> "Yesterday"
+        else -> SimpleDateFormat("EEE, MMM d, yyyy", Locale.getDefault()).format(Date(dayStart))
+    }
+}
+
+enum class SortOrder(val label: String, val code: Int) {
+    NEWEST("Newest first", 0),
+    OLDEST("Oldest first", 1),
+    HIGHEST("Highest amount", 2),
+    LOWEST("Lowest amount", 3)
+}
+
+enum class DateRange(val label: String) {
+    ALL("All time"),
+    TODAY("Today"),
+    WEEK("This week"),
+    MONTH("This month"),
+    CUSTOM("Custom")
+}
+
+data class HistoryFilter(
+    val query: String = "",
+    val categoryId: Long? = null,
+    val range: DateRange = DateRange.ALL,
+    val customFrom: Long = 0L,
+    val customTo: Long = Long.MAX_VALUE,
+    val sort: SortOrder = SortOrder.NEWEST
+)
+
+// Start (inclusive) and end (exclusive) of the chosen date range, in milliseconds
+fun HistoryFilter.bounds(): Pair<Long, Long> = when (range) {
+    DateRange.ALL -> 0L to Long.MAX_VALUE
+    DateRange.TODAY -> Periods.startOf("DAY") to Long.MAX_VALUE
+    DateRange.WEEK -> Periods.startOf("WEEK") to Long.MAX_VALUE
+    DateRange.MONTH -> Periods.startOf("MONTH") to Long.MAX_VALUE
+    DateRange.CUSTOM -> customFrom to customTo
+}
+
+// The range picker returns UTC dates; these turn them into local day boundaries
+fun pickerDayStart(pickerMillis: Long): Long {
+    val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = pickerMillis }
+    return Calendar.getInstance().apply {
+        clear()
+        set(utc.get(Calendar.YEAR), utc.get(Calendar.MONTH), utc.get(Calendar.DAY_OF_MONTH))
+    }.timeInMillis
+}
+
+fun nextDayStart(timestamp: Long): Long =
+    Calendar.getInstance().apply {
+        timeInMillis = timestamp
+        add(Calendar.DAY_OF_MONTH, 1)
+    }.timeInMillis
+
+fun rangeLabel(from: Long, to: Long): String {
+    val fmt = SimpleDateFormat("MMM d", Locale.getDefault())
+    val a = fmt.format(Date(from))
+    val b = fmt.format(Date(to - 1))
+    return if (a == b) a else "$a – $b"
+}
+
+// Matches the "day" text produced by the database query, e.g. "2026-11-14"
+fun dayKey(dayStart: Long): String =
+    SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(dayStart))

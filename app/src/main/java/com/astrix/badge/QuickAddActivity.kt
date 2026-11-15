@@ -24,18 +24,18 @@ class QuickAddActivity : ComponentActivity() {
                 var text by remember { mutableStateOf("") }
                 var note by remember { mutableStateOf("") }
                 AlertDialog(
-                    onDismissRequest = { finish() },
+                    onDismissRequest = { finishAndRemoveTask() },
                     title = { Text("Add expense") },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            AmountField(text, { text = it })
                             OutlinedTextField(
                                 value = note,
                                 onValueChange = { note = it },
-                                label = { Text("Label (e.g. Lunch)") },
+                                label = { Text("Name (e.g. Lunch)") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
+                            AmountField(text, { text = it }, Modifier.fillMaxWidth())
                         }
                     },
                     confirmButton = {
@@ -47,12 +47,12 @@ class QuickAddActivity : ComponentActivity() {
                                         Expense(amount = a, categoryId = null, note = note.trim())
                                     )
                                     BadgeWidget().updateAll(applicationContext)
-                                    finish()
+                                    finishAndRemoveTask()
                                 }
                             }
                         }) { Text("Save") }
                     },
-                    dismissButton = { TextButton(onClick = { finish() }) { Text("Cancel") } }
+                    dismissButton = { TextButton(onClick = { finishAndRemoveTask() }) { Text("Cancel") } }
                 )
             }
         }

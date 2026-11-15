@@ -15,17 +15,17 @@ import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun DashboardScreen(vm: BadgeViewModel) {
-    val expenses by vm.expenses.collectAsState()
+fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense) -> Unit) {
+    val recent by vm.recent.collectAsState()
+    val today by vm.todayTotal.collectAsState()
+    val week by vm.weekTotal.collectAsState()
+    val month by vm.monthTotal.collectAsState()
     val categories by vm.categories.collectAsState()
     val quick by vm.quickButtons.collectAsState()
     var text by remember { mutableStateOf("") }
     var cat by remember { mutableStateOf<Long?>(null) }
     var note by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Expense?>(null) }
-
-    fun total(period: String) =
-        expenses.filter { it.timestamp >= Periods.startOf(period) }.sumOf { it.amount }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -40,14 +40,14 @@ fun DashboardScreen(vm: BadgeViewModel) {
                 Column(Modifier.padding(20.dp)) {
                     Text("Spent today", style = MaterialTheme.typography.labelLarge)
                     Text(
-                        money(total("DAY")),
+                        money(today),
                         style = MaterialTheme.typography.displayMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                        Text("Week: " + money(total("WEEK")))
-                        Text("Month: " + money(total("MONTH")))
+                        Text("Week: " + money(week))
+                        Text("Month: " + money(month))
                     }
                 }
             }
@@ -77,7 +77,7 @@ fun DashboardScreen(vm: BadgeViewModel) {
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
-                label = { Text("Label (e.g. Lunch)") },
+                label = { Text("Name (e.g. Lunch)") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -95,9 +95,27 @@ fun DashboardScreen(vm: BadgeViewModel) {
             }
         }
 
-        item { Text("Recent", style = MaterialTheme.typography.titleMedium) }
+        item {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Recent", style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = onSeeAll) { Text("See all") }
+            }
+        }
 
-        items(expenses.take(30), key = { it.id }) { e ->
+        if (recent.isEmpty()) {
+            item {
+                Text(
+                    "No expenses yet. Add one above.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        items(recent, key = { it.id }) { e ->
             val catName = categories.firstOrNull { it.id == e.categoryId }?.name
             val time = formatTime(e.timestamp)
             ListItem(
@@ -110,7 +128,7 @@ fun DashboardScreen(vm: BadgeViewModel) {
                         IconButton(onClick = { editing = e }) {
                             Icon(Icons.Default.Edit, contentDescription = "Edit")
                         }
-                        IconButton(onClick = { vm.deleteExpense(e) }) {
+                        IconButton(onClick = { onDelete(e) }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete")
                         }
                     }
@@ -119,6 +137,7 @@ fun DashboardScreen(vm: BadgeViewModel) {
         }
     }
 
+    // Edit pop-up: shows only while an entry is being edited
     editing?.let { e ->
         EditExpenseDialog(
             expense = e,

@@ -58,9 +58,7 @@ class BadgeWidget : GlanceAppWidget() {
             val selectedId = prefs[SelectedKey]
             val message = prefs[MessageKey]
             val allButtons by dao.observeQuickButtons().collectAsState(initial = emptyList())
-            val expenses by dao.observeExpenses().collectAsState(initial = emptyList())
-            val start = Periods.startOf("DAY")
-            val today = expenses.filter { it.timestamp >= start }.sumOf { it.amount }
+            val today by dao.observeTotalSince(Periods.startOf("DAY")).collectAsState(initial = 0.0)
             GlanceTheme(colors = BadgeWidgetColors) {
                 WidgetContent(allButtons, today, selectedId, message)
             }
@@ -77,7 +75,7 @@ fun WidgetContent(
 ) {
     val context = LocalContext.current
     val compact = LocalSize.current.height < 160.dp
-    val shown = buttons.take(if (compact) 2 else 4)
+    val shown = buttons.take(MAX_QUICK_BUTTONS)
     val pad = if (compact) 10.dp else 14.dp
 
     Column(
@@ -142,13 +140,11 @@ fun WidgetContent(
                     .clickable(actionStartActivity(Intent(context, QuickAddActivity::class.java))),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    "+",
-                    style = TextStyle(
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlanceTheme.colors.onPrimaryContainer
-                    )
+                Image(
+                    provider = ImageProvider(R.drawable.ic_add),
+                    contentDescription = "Add expense",
+                    modifier = GlanceModifier.size(24.dp),
+                    colorFilter = ColorFilter.tint(GlanceTheme.colors.onPrimaryContainer)
                 )
             }
         }

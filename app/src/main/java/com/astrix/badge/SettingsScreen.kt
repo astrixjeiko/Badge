@@ -123,7 +123,7 @@ fun SettingsScreen(vm: BadgeViewModel) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         label, { label = it },
-                        label = { Text("Button name (e.g. Jeepney)") },
+                        label = { Text("Name (e.g. Jeepney)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
