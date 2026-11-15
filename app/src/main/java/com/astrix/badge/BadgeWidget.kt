@@ -5,7 +5,7 @@ import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.Preferences
@@ -42,13 +42,16 @@ val MessageStampKey = longPreferencesKey("message_stamp")
 
 val BadgeWidgetColors = ColorProviders(light = LightColors, dark = DarkColors)
 
+val TileHPadding = 12.dp
+val TileGap = 6.dp
+private val IconRoom = 20.dp
+private const val NAME_CHAR_WIDTH_DP = 7.5f
+
 class BadgeWidget : GlanceAppWidget() {
 
     override val stateDefinition = PreferencesGlanceStateDefinition
 
-    override val sizeMode = SizeMode.Responsive(
-        setOf(DpSize(250.dp, 250.dp))
-    )
+    override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         CurrencyStore.load(context)
@@ -58,9 +61,10 @@ class BadgeWidget : GlanceAppWidget() {
             val selectedId = prefs[SelectedKey]
             val message = prefs[MessageKey]
             val allButtons by dao.observeQuickButtons().collectAsState(initial = emptyList())
+            val categories by dao.observeCategories().collectAsState(initial = emptyList())
             val today by dao.observeTotalSince(Periods.startOf("DAY")).collectAsState(initial = 0.0)
             GlanceTheme(colors = BadgeWidgetColors) {
-                WidgetContent(allButtons, today, selectedId, message)
+                WidgetContent(allButtons, categories, today, selectedId, message)
             }
         }
     }
@@ -69,6 +73,7 @@ class BadgeWidget : GlanceAppWidget() {
 @Composable
 fun WidgetContent(
     buttons: List<QuickButton>,
+    categories: List<Category>,
     today: Double,
     selectedId: Long?,
     message: String?
@@ -77,6 +82,7 @@ fun WidgetContent(
     val compact = LocalSize.current.height < 160.dp
     val shown = buttons.take(MAX_QUICK_BUTTONS)
     val pad = if (compact) 10.dp else 14.dp
+    val tileWidth = (LocalSize.current.width - pad * 2 - TileGap) / 2
 
     Column(
         modifier = GlanceModifier
@@ -85,7 +91,6 @@ fun WidgetContent(
             .cornerRadius(24.dp)
             .padding(pad)
     ) {
-        // Header: total on the left, Confirm (when something is selected) and "+" on the right
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -186,11 +191,12 @@ fun WidgetContent(
             if (rowIndex > 0) Spacer(GlanceModifier.height(6.dp))
             Row(modifier = GlanceModifier.fillMaxWidth()) {
                 pair.forEachIndexed { i, b ->
-                    if (i > 0) Spacer(GlanceModifier.width(6.dp))
-                    QuickTile(b, b.id == selectedId, compact, GlanceModifier.defaultWeight())
+                    if (i > 0) Spacer(GlanceModifier.width(TileGap))
+                    val icon = categories.firstOrNull { it.id == b.categoryId }?.icon.orEmpty()
+                    QuickTile(b, icon, b.id == selectedId, compact, tileWidth, GlanceModifier.defaultWeight())
                 }
                 if (pair.size == 1) {
-                    Spacer(GlanceModifier.width(6.dp))
+                    Spacer(GlanceModifier.width(TileGap))
                     Spacer(GlanceModifier.defaultWeight())
                 }
             }
@@ -199,27 +205,47 @@ fun WidgetContent(
 }
 
 @Composable
-fun QuickTile(b: QuickButton, selected: Boolean, compact: Boolean, modifier: GlanceModifier) {
+fun QuickTile(
+    b: QuickButton,
+    icon: String,
+    selected: Boolean,
+    compact: Boolean,
+    tileWidth: Dp,
+    modifier: GlanceModifier
+) {
     val bg = if (selected) GlanceTheme.colors.primary else GlanceTheme.colors.surfaceVariant
     val titleColor = if (selected) GlanceTheme.colors.onPrimary else GlanceTheme.colors.onSurface
     val amountColor = if (selected) GlanceTheme.colors.onPrimary else GlanceTheme.colors.primary
+
+    val nameRoom = tileWidth - TileHPadding * 2 - (if (icon.isBlank()) 0.dp else IconRoom)
+    val maxChars = (nameRoom.value / NAME_CHAR_WIDTH_DP).toInt().coerceAtLeast(4)
 
     Column(
         modifier = modifier
             .background(bg)
             .cornerRadius(16.dp)
-            .padding(horizontal = 12.dp, vertical = if (compact) 6.dp else 9.dp)
+            .padding(horizontal = TileHPadding, vertical = if (compact) 6.dp else 9.dp)
             .clickable(actionRunCallback<SelectAction>(actionParametersOf(ButtonIdKey to b.id)))
     ) {
-        Text(
-            b.label,
-            maxLines = 1,
-            style = TextStyle(
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = titleColor
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (icon.isNotBlank()) {
+                Text(icon, maxLines = 1, style = TextStyle(fontSize = 13.sp))
+                Spacer(GlanceModifier.width(4.dp))
+            }
+            Text(
+                b.label.ellipsize(maxChars),
+                maxLines = 1,
+                modifier = GlanceModifier.defaultWeight(),
+                style = TextStyle(
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = titleColor
+                )
             )
-        )
+        }
         Text(
             money(b.amount),
             maxLines = 1,
@@ -259,7 +285,6 @@ class ConfirmAction : ActionCallback {
         val b = dao.getQuickButtons().firstOrNull { it.id == id }
 
         if (b == null) {
-            // The button was deleted in the app: just clear the selection
             updateAppWidgetState(context, glanceId) { prefs ->
                 prefs.remove(SelectedKey)
                 prefs.remove(MessageKey)

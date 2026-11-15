@@ -1,17 +1,21 @@
 package com.astrix.badge
 
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 
-// A text box that ONLY accepts numbers (digits and one decimal point, max 2 decimals)
 @Composable
 fun AmountField(
     value: String,
@@ -39,7 +43,22 @@ fun CategoryChips(
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(selected == null, { onSelect(null) }, { Text(anyLabel) })
         categories.forEach { c ->
-            FilterChip(selected == c.id, { onSelect(c.id) }, { Text(c.name) })
+            FilterChip(selected == c.id, { onSelect(c.id) }, { Text(c.display()) })
         }
     }
+}
+
+@Composable
+fun ExpenseHeadline(e: Expense) {
+    val amountColor = MaterialTheme.colorScheme.onSurface
+    val softColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val text = buildAnnotatedString {
+        withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = amountColor)) {
+            append(money(e.amount))
+        }
+        if (e.note.isNotBlank()) {
+            withStyle(SpanStyle(color = softColor)) { append(" · " + e.note) }
+        }
+    }
+    Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }

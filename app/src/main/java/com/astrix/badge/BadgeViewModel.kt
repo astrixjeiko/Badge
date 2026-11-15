@@ -106,7 +106,9 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
         // First launch: add starter data
         viewModelScope.launch {
             if (dao.countCategories() == 0) {
-                listOf("Food", "Transport", "Misc").forEach { dao.insertCategory(Category(name = it)) }
+                listOf("🍔" to "Food", "🚌" to "Transport", "🧾" to "Misc").forEach { (icon, name) ->
+                    dao.insertCategory(Category(name = name, icon = icon))
+                }
                 dao.insertQuickButton(QuickButton(label = "Commute", amount = 20.0, categoryId = null))
             }
         }
@@ -125,7 +127,9 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
         _restored.emit(e.id)
     }
 
-    fun addCategory(name: String) = viewModelScope.launch { dao.insertCategory(Category(name = name)) }
+    fun addCategory(name: String, icon: String) = viewModelScope.launch {
+        dao.insertCategory(Category(name = name, icon = icon))
+    }
     fun deleteCategory(c: Category) = viewModelScope.launch { dao.deleteCategory(c) }
 
     fun addQuickButton(label: String, amount: Double, categoryId: Long?) = viewModelScope.launch {

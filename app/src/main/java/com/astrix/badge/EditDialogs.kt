@@ -13,6 +13,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import android.text.format.DateFormat
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
 
 @Composable
 fun EditCategoryDialog(
@@ -21,25 +24,44 @@ fun EditCategoryDialog(
     onSave: (Category) -> Unit
 ) {
     var name by remember { mutableStateOf(category.name) }
+    var icon by remember { mutableStateOf(category.icon) }
+    var showPicker by remember { mutableStateOf(false) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Edit category") },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("Name") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    IconPickerButton(icon) { showPicker = true }
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Name") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (icon.isNotBlank()) {
+                    TextButton(onClick = { icon = "" }) { Text("Remove icon") }
+                }
+            }
         },
         confirmButton = {
             TextButton(onClick = {
-                if (name.isNotBlank()) onSave(category.copy(name = name.trim()))
+                if (name.isNotBlank()) onSave(category.copy(name = name.trim(), icon = icon))
             }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+
+    if (showPicker) {
+        EmojiPickerDialog(
+            onDismiss = { showPicker = false },
+            onPick = { icon = it; showPicker = false }
+        )
+    }
 }
 
 @Composable

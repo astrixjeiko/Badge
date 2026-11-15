@@ -13,6 +13,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+@Composable
+private fun Section(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        content = content
+    )
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense) -> Unit) {
@@ -27,27 +37,26 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
     var note by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Expense?>(null) }
 
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    LazyColumn(contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp)) {
         // Summary card
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-            ) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("Spent today", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        money(today),
-                        style = MaterialTheme.typography.displayMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                        Text("Week: " + money(week))
-                        Text("Month: " + money(month))
+            Section {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    Column(Modifier.padding(20.dp)) {
+                        Text("Spent today", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            money(today),
+                            style = MaterialTheme.typography.displayMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                            Text("Week: " + money(week))
+                            Text("Month: " + money(month))
+                        }
                     }
                 }
             }
@@ -55,73 +64,86 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
 
         // Quick-add buttons
         item {
-            Text("Quick add", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
-            if (quick.isEmpty()) Text("No buttons yet. Add some in Settings.")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                quick.forEach { b ->
-                    AssistChip(
-                        onClick = { vm.addExpense(b.amount, b.categoryId, b.label) },
-                        label = { Text(b.label + " " + money(b.amount)) }
-                    )
+            Section {
+                Text("Quick add", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                if (quick.isEmpty()) Text("No buttons yet. Add some in Settings.")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    quick.forEach { b ->
+                        val icon = categories.firstOrNull { it.id == b.categoryId }?.icon.orEmpty()
+                        AssistChip(
+                            onClick = { vm.addExpense(b.amount, b.categoryId, b.label) },
+                            label = {
+                                Text((if (icon.isBlank()) "" else "$icon ") + b.label + " " + money(b.amount))
+                            }
+                        )
+                    }
                 }
             }
         }
 
         // Custom amount
         item {
-            Text("Custom amount", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
-            CategoryChips(categories, cat) { cat = it }
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                label = { Text("Name (e.g. Lunch)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AmountField(text, { text = it }, Modifier.weight(1f))
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = {
-                    text.toDoubleOrNull()?.takeIf { it > 0 }?.let {
-                        vm.addExpense(it, cat, note.trim())
-                        text = ""
-                        note = ""
+            Section {
+                Text("Custom amount", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                CategoryChips(categories, cat) { cat = it }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("Name (e.g. Lunch)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    AmountField(text, { text = it }, Modifier.weight(1f))
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.height(56.dp), contentAlignment = Alignment.Center) {
+                        Button(onClick = {
+                            text.toDoubleOrNull()?.takeIf { it > 0 }?.let {
+                                vm.addExpense(it, cat, note.trim())
+                                text = ""
+                                note = ""
+                            }
+                        }) { Text("Add") }
                     }
-                }) { Text("Add") }
+                }
             }
         }
 
+        // Recent heading
         item {
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Recent", style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = onSeeAll) { Text("See all") }
+            Section {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Recent", style = MaterialTheme.typography.titleMedium)
+                    TextButton(onClick = onSeeAll) { Text("See all") }
+                }
             }
         }
 
         if (recent.isEmpty()) {
             item {
-                Text(
-                    "No expenses yet. Add one above.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Section {
+                    Text(
+                        "No expenses yet. Add one above.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
 
         items(recent, key = { it.id }) { e ->
-            val catName = categories.firstOrNull { it.id == e.categoryId }?.name
-            val time = formatTime(e.timestamp)
+            val catText = categories.firstOrNull { it.id == e.categoryId }?.display()
             ListItem(
-                headlineContent = { Text(money(e.amount)) },
+                headlineContent = { ExpenseHeadline(e) },
                 supportingContent = {
-                    Text(listOfNotNull(catName, e.note.ifBlank { null }, time).joinToString(" · "))
+                    Text(listOfNotNull(catText, formatTime(e.timestamp)).joinToString(" · "))
                 },
                 trailingContent = {
                     Row {
@@ -137,7 +159,7 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
         }
     }
 
-    // Edit pop-up: shows only while an entry is being edited
+    // Edit pop-up: shows only while an expense is being edited
     editing?.let { e ->
         EditExpenseDialog(
             expense = e,

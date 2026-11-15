@@ -174,3 +174,11 @@ fun rangeLabel(from: Long, to: Long): String {
 // Matches the "day" text produced by the database query, e.g. "2026-11-14"
 fun dayKey(dayStart: Long): String =
     SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(dayStart))
+
+fun Category.display(): String = if (icon.isBlank()) name else icon + " " + name
+
+// Shortens long text with "…" (counts emoji as one character)
+fun String.ellipsize(maxChars: Int): String {
+    if (codePointCount(0, length) <= maxChars) return this
+    return substring(0, offsetByCodePoints(0, maxChars - 1)).trimEnd() + "…"
+}

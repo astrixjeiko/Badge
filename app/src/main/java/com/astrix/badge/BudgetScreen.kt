@@ -26,14 +26,14 @@ fun BudgetScreen(vm: BadgeViewModel) {
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { Button(onClick = { showAdd = true }) { Text("Add budget") } }
+        item { Button(onClick = { showAdd = true }) { Text("+ New budget") } }
         items(budgets, key = { it.id }) { b ->
             val spent by remember(b.period, b.categoryId) {
                 vm.spentFlow(b.period, b.categoryId)
             }.collectAsState(initial = 0.0)
             val ratio = (spent / b.limitAmount).toFloat().coerceIn(0f, 1f)
             val over = spent > b.limitAmount
-            val catName = categories.firstOrNull { it.id == b.categoryId }?.name ?: "All spending"
+            val catName = categories.firstOrNull { it.id == b.categoryId }?.display() ?: "All spending"
             val detail = catName + " · " + b.period.lowercase()
 
             Card(Modifier.fillMaxWidth()) {

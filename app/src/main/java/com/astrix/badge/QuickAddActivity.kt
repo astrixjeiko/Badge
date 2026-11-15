@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -21,13 +23,20 @@ class QuickAddActivity : ComponentActivity() {
         val dao = BadgeDatabase.get(this).dao()
         setContent {
             BadgeTheme {
-                var text by remember { mutableStateOf("") }
+                val categories by dao.observeCategories().collectAsState(initial = emptyList())
+                var cat by remember { mutableStateOf<Long?>(null) }
                 var note by remember { mutableStateOf("") }
+                var text by remember { mutableStateOf("") }
+
                 AlertDialog(
                     onDismissRequest = { finishAndRemoveTask() },
                     title = { Text("Add expense") },
                     text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.verticalScroll(rememberScrollState())
+                        ) {
+                            CategoryChips(categories, cat) { cat = it }
                             OutlinedTextField(
                                 value = note,
                                 onValueChange = { note = it },
@@ -44,7 +53,7 @@ class QuickAddActivity : ComponentActivity() {
                             if (a != null && a > 0) {
                                 lifecycleScope.launch {
                                     dao.insertExpense(
-                                        Expense(amount = a, categoryId = null, note = note.trim())
+                                        Expense(amount = a, categoryId = cat, note = note.trim())
                                     )
                                     BadgeWidget().updateAll(applicationContext)
                                     finishAndRemoveTask()
@@ -52,7 +61,9 @@ class QuickAddActivity : ComponentActivity() {
                             }
                         }) { Text("Save") }
                     },
-                    dismissButton = { TextButton(onClick = { finishAndRemoveTask() }) { Text("Cancel") } }
+                    dismissButton = {
+                        TextButton(onClick = { finishAndRemoveTask() }) { Text("Cancel") }
+                    }
                 )
             }
         }

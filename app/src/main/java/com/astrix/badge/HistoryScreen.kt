@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Close
@@ -15,16 +17,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
-import androidx.compose.runtime.withFrameNanos
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 @Composable
 fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
@@ -49,7 +52,7 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
     // Jump back to the top whenever the filter or sort changes
     LaunchedEffect(filter) { listState.scrollToItem(0) }
 
-    // After Undo, scroll to the restored expense once it shows up in the list
+    // After Undo, scroll up to the restored expense if it is above what is on screen
     LaunchedEffect(Unit) {
         vm.restored.collect { id ->
             val index = withTimeoutOrNull(2.seconds) {
@@ -65,7 +68,6 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
                 withFrameNanos { }
                 // Scroll one row higher so the day header stays visible
                 val target = (index - 1).coerceAtLeast(0)
-                // Only scroll up: skip it if the expense is already fully on screen or below
                 val above = target < listState.firstVisibleItemIndex ||
                         (target == listState.firstVisibleItemIndex && listState.firstVisibleItemScrollOffset > 0)
                 if (above) listState.animateScrollToItem(target)
@@ -153,7 +155,10 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
 
         // Summary
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            Modifier
+                .fillMaxWidth()
+                .height(32.dp)
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -163,10 +168,18 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
                 color = MaterialTheme.colorScheme.primary
             )
             if (hasFilters) {
-                TextButton(onClick = {
-                    queryText = ""
-                    vm.updateFilter { HistoryFilter(sort = it.sort) }
-                }) { Text("Clear filters") }
+                Text(
+                    "Clear filters",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            queryText = ""
+                            vm.updateFilter { HistoryFilter(sort = it.sort) }
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
             }
         }
 
@@ -207,15 +220,12 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
                         }
                         is HistoryItem.Entry -> {
                             val e = item.expense
-                            val catName = categories.firstOrNull { it.id == e.categoryId }?.name
+                            val catText = categories.firstOrNull { it.id == e.categoryId }?.display()
                             val whenText = if (showDates) formatTime(e.timestamp) else formatClock(e.timestamp)
                             ListItem(
-                                headlineContent = { Text(money(e.amount)) },
+                                headlineContent = { ExpenseHeadline(e) },
                                 supportingContent = {
-                                    Text(
-                                        listOfNotNull(catName, e.note.ifBlank { null }, whenText)
-                                            .joinToString(" · ")
-                                    )
+                                    Text(listOfNotNull(catText, whenText).joinToString(" · "))
                                 },
                                 trailingContent = {
                                     Row {
@@ -268,22 +278,49 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
 @Composable
 fun DateRangeDialog(onDismiss: () -> Unit, onConfirm: (Long, Long) -> Unit) {
     val state = rememberDateRangePickerState()
+    val start = state.selectedStartDateMillis
+    val end = state.selectedEndDateMillis
+
+    val headlineText = when {
+        start == null -> "Choose a start date"
+        end == null -> "Choose an end date"
+        else -> rangeLabel(pickerDayStart(start), nextDayStart(pickerDayStart(end)))
+    }
+
     DatePickerDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(
-                enabled = state.selectedStartDateMillis != null,
+                enabled = start != null,
                 onClick = {
-                    val start = state.selectedStartDateMillis ?: return@TextButton
-                    val end = state.selectedEndDateMillis ?: start
-                    val from = pickerDayStart(start)
-                    val to = nextDayStart(pickerDayStart(end))
-                    onConfirm(from, to)
+                    val s = start ?: return@TextButton
+                    val e = end ?: s
+                    onConfirm(pickerDayStart(s), nextDayStart(pickerDayStart(e)))
                 }
             ) { Text("OK") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     ) {
-        DateRangePicker(state = state, modifier = Modifier.height(500.dp))
+        DateRangePicker(
+            state = state,
+            modifier = Modifier.height(500.dp),
+            title = {
+                Text(
+                    "Select dates",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp)
+                )
+            },
+            headline = {
+                Text(
+                    headlineText,
+                    style = MaterialTheme.typography.headlineSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 12.dp)
+                )
+            },
+            showModeToggle = false
+        )
     }
 }

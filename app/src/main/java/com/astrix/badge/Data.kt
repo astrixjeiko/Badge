@@ -10,7 +10,8 @@ import kotlinx.coroutines.flow.Flow
 @Entity(tableName = "categories")
 data class Category(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val name: String
+    val name: String,
+    @ColumnInfo(defaultValue = "''") val icon: String = ""
 )
 
 @Entity(
@@ -139,9 +140,15 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE categories ADD COLUMN icon TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 @Database(
     entities = [Expense::class, Category::class, QuickButton::class, Budget::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class BadgeDatabase : RoomDatabase() {
@@ -152,7 +159,7 @@ abstract class BadgeDatabase : RoomDatabase() {
         fun get(context: Context): BadgeDatabase = INSTANCE ?: synchronized(this) {
             INSTANCE ?: Room.databaseBuilder(
                 context.applicationContext, BadgeDatabase::class.java, "badge.db"
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { INSTANCE = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { INSTANCE = it }
         }
     }
 }
