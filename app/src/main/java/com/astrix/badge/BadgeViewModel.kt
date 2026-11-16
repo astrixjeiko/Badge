@@ -1,6 +1,8 @@
 package com.astrix.badge
 
 import android.app.Application
+import androidx.core.content.edit
+import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -9,12 +11,12 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.insertSeparators
 import androidx.paging.map
+import androidx.room.withTransaction
 import android.content.Context
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import androidx.glance.appwidget.updateAll
-import androidx.core.content.edit
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalCoroutinesApi::class)
 
@@ -33,7 +35,6 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     private fun dayOf(item: HistoryItem?): Long? =
         (item as? HistoryItem.Entry)?.let { startOfDay(it.expense.timestamp) }
 
-    // Nudged when the app returns to the screen, so "today" rolls over at midnight
     private val tick = MutableStateFlow(0)
     fun refreshPeriods() { tick.value += 1 }
 
@@ -54,16 +55,12 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     val quickButtons = dao.observeQuickButtons().asState(emptyList())
     val budgets = dao.observeBudgets().asState(emptyList())
 
-    // --- Liquid card: what counts as "full" ---
-
-    // The lowest Day budget for all spending, if there is one
     val dailyBudget: StateFlow<Double?> = budgets
         .map { list ->
             list.filter { it.period == "DAY" && it.categoryId == null }.minOfOrNull { it.limitAmount }
         }
         .asState(null)
 
-    // Average spent per day over the last 30 days (not counting today)
     val averageDaily: StateFlow<Double> = tick
         .flatMapLatest {
             val todayStart = Periods.startOf("DAY")
@@ -72,8 +69,7 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
                 if (first == null || w.total <= 0.0) {
                     0.0
                 } else {
-                    val days = Math.round((todayStart - startOfDay(first)) / 86_400_000.0)
-                        .toInt()
+                    val days = ((todayStart - startOfDay(first)) / 86_400_000.0).roundToInt()
                         .coerceIn(1, 30)
                     w.total / days
                 }
@@ -96,7 +92,6 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
         _filter.update(change)
     }
 
-    // The filter plus its resolved date range; recomputed when the app resumes so "Today" rolls over
     private data class Resolved(val f: HistoryFilter, val startMs: Long, val endMs: Long)
 
     private val resolved = combine(_filter, tick) { f, _ ->
@@ -133,7 +128,6 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
             .map { list -> list.associate { it.day to it.total } }
     }.asState(emptyMap())
 
-    // Used by each budget card to get how much has been spent
     fun spentFlow(period: String, categoryId: Long?): Flow<Double> =
         tick.map { Periods.startOf(period) }
             .distinctUntilChanged()
@@ -164,8 +158,8 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
                         "🛍️" to "Shopping",
                         "🧾" to "Bills",
                         "📦" to "Misc"
-                    ).forEach { (icon, name) ->
-                        ids[name] = dao.insertCategory(Category(name = name, icon = icon))
+                    ).forEachIndexed { index, (icon, name) ->
+                        ids[name] = dao.insertCategory(Category(name = name, icon = icon, position = index))
                     }
                     dao.insertQuickButton(
                         QuickButton(label = "Commute", amount = 20.0, categoryId = ids["Transport"])
@@ -194,13 +188,17 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun addCategory(name: String, icon: String) = viewModelScope.launch {
-        dao.insertCategory(Category(name = name, icon = icon))
+        val next = (categories.value.maxOfOrNull { it.position } ?: -1) + 1
+        dao.insertCategory(Category(name = name, icon = icon, position = next))
     }
     fun deleteCategory(c: Category) = viewModelScope.launch { dao.deleteCategory(c) }
 
     fun addQuickButton(label: String, amount: Double, categoryId: Long?) = viewModelScope.launch {
         if (quickButtons.value.size >= MAX_QUICK_BUTTONS) return@launch
-        dao.insertQuickButton(QuickButton(label = label, amount = amount, categoryId = categoryId))
+        val next = (quickButtons.value.maxOfOrNull { it.position } ?: -1) + 1
+        dao.insertQuickButton(
+            QuickButton(label = label, amount = amount, categoryId = categoryId, position = next)
+        )
         refreshWidget()
     }
     fun deleteQuickButton(b: QuickButton) = viewModelScope.launch { dao.deleteQuickButton(b)
@@ -212,8 +210,6 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updateBudget(b: Budget) = viewModelScope.launch { dao.updateBudget(b) }
-    fun deleteBudget(b: Budget) = viewModelScope.launch { dao.deleteBudget(b) }
-
     fun updateExpense(e: Expense) = viewModelScope.launch {
         dao.updateExpense(e)
         refreshWidget()
@@ -223,6 +219,39 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateQuickButton(b: QuickButton) = viewModelScope.launch {
         dao.updateQuickButton(b)
+        refreshWidget()
+    }
+
+    fun deleteExpenses(list: List<Expense>) = viewModelScope.launch {
+        dao.deleteExpenses(list)
+        refreshWidget()
+    }
+
+    fun restoreExpenses(list: List<Expense>) = viewModelScope.launch {
+        dao.insertExpenses(list)
+        refreshWidget()
+        list.maxByOrNull { it.timestamp }?.let { _restored.emit(it.id) }
+    }
+
+    fun deleteBudgets(list: List<Budget>) = viewModelScope.launch { dao.deleteBudgets(list) }
+    fun restoreBudgets(list: List<Budget>) = viewModelScope.launch { dao.insertBudgets(list) }
+
+    suspend fun filteredExpenses(): List<Expense> {
+        val f = _filter.value
+        val (start, end) = f.bounds()
+        return dao.filteredExpenses(f.query.trim(), f.categoryId, start, end)
+    }
+
+    fun reorderCategories(ids: List<Long>) = viewModelScope.launch {
+        BadgeDatabase.get(getApplication()).withTransaction {
+            ids.forEachIndexed { index, id -> dao.setCategoryPosition(id, index) }
+        }
+    }
+
+    fun reorderQuickButtons(ids: List<Long>) = viewModelScope.launch {
+        BadgeDatabase.get(getApplication()).withTransaction {
+            ids.forEachIndexed { index, id -> dao.setQuickButtonPosition(id, index) }
+        }
         refreshWidget()
     }
 }

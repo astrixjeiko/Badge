@@ -1,5 +1,6 @@
 package com.astrix.badge
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,11 +14,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun BudgetScreen(vm: BadgeViewModel) {
+fun BudgetScreen(vm: BadgeViewModel, onDelete: (Budget) -> Unit) {
     val tour = LocalTourTargets.current
+    val selection = LocalSelection.current
+    val haptics = LocalHapticFeedback.current
     val budgets by vm.budgets.collectAsState()
     val categories by vm.categories.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
@@ -41,8 +47,27 @@ fun BudgetScreen(vm: BadgeViewModel) {
             val over = spent > b.limitAmount
             val catName = categories.firstOrNull { it.id == b.categoryId }?.display() ?: "All spending"
             val detail = catName + " · " + b.period.lowercase()
+            val selected = selection.isSelected(b)
+            val selecting = selection.active
 
-            Card(Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pointerInput(b, selecting) {
+                        detectTapGestures(
+                            onLongPress = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                selection.toggle(b)
+                            },
+                            onTap = { if (selecting) selection.toggle(b) }
+                        )
+                    },
+                colors = if (selected) {
+                    CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                } else {
+                    CardDefaults.cardColors()
+                }
+            ) {
                 Column(Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -58,11 +83,15 @@ fun BudgetScreen(vm: BadgeViewModel) {
                                 )
                             }
                         }
-                        IconButton(onClick = { editing = b }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit")
-                        }
-                        IconButton(onClick = { vm.deleteBudget(b) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete")
+                        if (selecting) {
+                            Checkbox(checked = selected, onCheckedChange = null)
+                        } else {
+                            IconButton(onClick = { editing = b }) {
+                                Icon(Icons.Default.Edit, contentDescription = "Edit")
+                            }
+                            IconButton(onClick = { onDelete(b) }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Delete")
+                            }
                         }
                     }
                     Spacer(Modifier.height(4.dp))
@@ -102,7 +131,6 @@ fun BudgetScreen(vm: BadgeViewModel) {
     }
 }
 
-// One dialog for both adding (initial = null) and editing a budget
 @Composable
 fun BudgetDialog(
     title: String,
@@ -131,19 +159,21 @@ fun BudgetDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Row(
-                    Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf("DAY", "WEEK", "MONTH", "YEAR").forEach { p ->
-                        FilterChip(
-                            period == p,
-                            { period = p },
-                            { Text(p.lowercase().replaceFirstChar { it.uppercase() }) }
-                        )
+                Column {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("DAY", "WEEK", "MONTH", "YEAR").forEach { p ->
+                            FilterChip(
+                                period == p,
+                                { period = p },
+                                { Text(p.lowercase().replaceFirstChar { it.uppercase() }) }
+                            )
+                        }
                     }
+                    CategoryChips(categories, cat, anyLabel = "All") { cat = it }
                 }
-                CategoryChips(categories, cat, anyLabel = "All") { cat = it }
                 AmountField(amount, { amount = it }, Modifier.fillMaxWidth(), label = "Limit")
             }
         },

@@ -123,7 +123,7 @@ fun EditExpenseDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit") },
+        title = { Text("Edit expense") },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),

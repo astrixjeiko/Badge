@@ -1,7 +1,5 @@
 package com.astrix.badge
 
-// One emoji per line: the emoji, then the words people might search for.
-// To add one, add a line anywhere in the list.
 private val EMOJI_DATA = """
 🍔 burger hamburger fast food
 🍟 fries fast food
@@ -287,7 +285,6 @@ private val ENTRIES: List<EmojiEntry> by lazy {
     }
 }
 
-// Every word you type must appear in an emoji's keywords for it to match
 fun searchEmojis(query: String): List<String> {
     val terms = query.lowercase().trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
     if (terms.isEmpty()) return emptyList()

@@ -10,8 +10,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,6 +30,7 @@ import kotlin.time.Duration.Companion.seconds
 @Composable
 fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
     val tour = LocalTourTargets.current
+    val selection = LocalSelection.current
     val rows = vm.history.collectAsLazyPagingItems()
     val categories by vm.categories.collectAsState()
     val filter by vm.filter.collectAsState()
@@ -222,23 +221,13 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
                         }
                         is HistoryItem.Entry -> {
                             val e = item.expense
-                            val catText = categories.firstOrNull { it.id == e.categoryId }?.display()
-                            val whenText = if (showDates) formatTime(e.timestamp) else formatClock(e.timestamp)
-                            ListItem(
-                                headlineContent = { ExpenseHeadline(e) },
-                                supportingContent = {
-                                    Text(listOfNotNull(catText, whenText).joinToString(" · "))
-                                },
-                                trailingContent = {
-                                    Row {
-                                        IconButton(onClick = { editing = e }) {
-                                            Icon(Icons.Default.Edit, contentDescription = "Edit")
-                                        }
-                                        IconButton(onClick = { onDelete(e) }) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Delete")
-                                        }
-                                    }
-                                }
+                            ExpenseRow(
+                                expense = e,
+                                categoryText = categories.firstOrNull { it.id == e.categoryId }?.display(),
+                                detailText = if (showDates) formatTime(e.timestamp) else formatClock(e.timestamp),
+                                selection = selection,
+                                onEdit = { editing = e },
+                                onDelete = { onDelete(e) }
                             )
                         }
                         null -> Spacer(Modifier.height(1.dp))

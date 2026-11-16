@@ -4,9 +4,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,16 +17,66 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
+private fun groupOf(key: Any): String? {
+    val k = key.toString()
+    return when {
+        k.startsWith("cat-") -> "cat"
+        k.startsWith("btn-") -> "btn"
+        else -> null
+    }
+}
+
+private fun <T> List<T>.moved(fromKey: String, toKey: String, keyOf: (T) -> String): List<T> {
+    val from = indexOfFirst { keyOf(it) == fromKey }
+    val to = indexOfFirst { keyOf(it) == toKey }
+    if (from < 0 || to < 0 || from == to) return this
+    return toMutableList().apply { add(to, removeAt(from)) }
+}
+
 @Composable
 fun SettingsScreen(vm: BadgeViewModel) {
     val tour = LocalTourTargets.current
     val categories by vm.categories.collectAsState()
     val buttons by vm.quickButtons.collectAsState()
     val categoryById = remember(categories) { categories.associateBy { it.id } }
+
+    var catOrder by remember(categories) { mutableStateOf(categories) }
+    var btnOrder by remember(buttons) { mutableStateOf(buttons) }
+
     var editingCat by remember { mutableStateOf<Category?>(null) }
     var editingBtn by remember { mutableStateOf<QuickButton?>(null) }
 
+    val listState = rememberLazyListState()
+    val reorder = rememberReorderState(
+        listState = listState,
+        sameGroup = { a, b -> groupOf(a) != null && groupOf(a) == groupOf(b) },
+        onMove = { from, to ->
+            when (groupOf(from)) {
+                "cat" -> {
+                    val moved = catOrder.moved(from.toString(), to.toString()) { "cat-" + it.id }
+                    val changed = moved !== catOrder
+                    catOrder = moved
+                    changed
+                }
+                "btn" -> {
+                    val moved = btnOrder.moved(from.toString(), to.toString()) { "btn-" + it.id }
+                    val changed = moved !== btnOrder
+                    btnOrder = moved
+                    changed
+                }
+                else -> false
+            }
+        },
+        onDrop = {
+            val catIds = catOrder.map { it.id }
+            if (catIds != categories.map { it.id }) vm.reorderCategories(catIds)
+            val btnIds = btnOrder.map { it.id }
+            if (btnIds != buttons.map { it.id }) vm.reorderQuickButtons(btnIds)
+        }
+    )
+
     LazyColumn(
+        state = listState,
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -45,12 +97,15 @@ fun SettingsScreen(vm: BadgeViewModel) {
                 modifier = Modifier.tourTarget(tour, TourTarget.SETTINGS_CATEGORIES)
             )
         }
-        items(categories, key = { "c" + it.id }, contentType = { "category" }) { c ->
-            CategoryRow(
-                category = c,
-                onEdit = { editingCat = c },
-                onDelete = { vm.deleteCategory(c) }
-            )
+        items(catOrder, key = { "cat-" + it.id }, contentType = { "category" }) { c ->
+            ReorderRow(reorder, "cat-" + c.id) { handle ->
+                CategoryRow(
+                    category = c,
+                    handle = handle,
+                    onEdit = { editingCat = c },
+                    onDelete = { vm.deleteCategory(c) }
+                )
+            }
         }
         item(key = "add-category") {
             AddCategoryRow(onAdd = { name, icon -> vm.addCategory(name, icon) })
@@ -64,13 +119,16 @@ fun SettingsScreen(vm: BadgeViewModel) {
                 style = MaterialTheme.typography.titleLarge
             )
         }
-        items(buttons, key = { "b" + it.id }, contentType = { "button" }) { b ->
-            QuickButtonRow(
-                button = b,
-                categoryText = categoryById[b.categoryId]?.display() ?: "No category",
-                onEdit = { editingBtn = b },
-                onDelete = { vm.deleteQuickButton(b) }
-            )
+        items(btnOrder, key = { "btn-" + it.id }, contentType = { "button" }) { b ->
+            ReorderRow(reorder, "btn-" + b.id) { handle ->
+                QuickButtonRow(
+                    button = b,
+                    categoryText = categoryById[b.categoryId]?.display() ?: "No category",
+                    handle = handle,
+                    onEdit = { editingBtn = b },
+                    onDelete = { vm.deleteQuickButton(b) }
+                )
+            }
         }
         item(key = "add-button") {
             AddQuickButtonForm(
@@ -123,20 +181,61 @@ private fun CurrencyPicker() {
 }
 
 @Composable
-private fun CategoryRow(category: Category, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun AnimationToggle() {
+    val context = LocalContext.current
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(category.display())
-        Row {
-            IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit")
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete")
-            }
+        Column(Modifier.weight(1f)) {
+            Text("Animations", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Liquid effect on the Home card, which also reacts to tilting your phone",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = AnimationStore.enabled,
+            onCheckedChange = { AnimationStore.set(context, it) }
+        )
+    }
+}
+
+@Composable
+private fun DragHandleIcon(handle: Modifier) {
+    Box(
+        Modifier.size(40.dp).then(handle),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            Icons.Default.DragHandle,
+            contentDescription = "Drag to reorder",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun CategoryRow(
+    category: Category,
+    handle: Modifier,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        DragHandleIcon(handle)
+        Text(category.display(), modifier = Modifier.weight(1f))
+        IconButton(onClick = onEdit) {
+            Icon(Icons.Default.Edit, contentDescription = "Edit")
+        }
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Default.Delete, contentDescription = "Delete")
         }
     }
 }
@@ -181,14 +280,15 @@ private fun AddCategoryRow(onAdd: (String, String) -> Unit) {
 private fun QuickButtonRow(
     button: QuickButton,
     categoryText: String,
+    handle: Modifier,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     Row(
         Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        DragHandleIcon(handle)
         Column(Modifier.weight(1f)) {
             Text(button.label + ": " + money(button.amount))
             Text(
@@ -197,13 +297,11 @@ private fun QuickButtonRow(
                 color = MaterialTheme.colorScheme.primary
             )
         }
-        Row {
-            IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit")
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete")
-            }
+        IconButton(onClick = onEdit) {
+            Icon(Icons.Default.Edit, contentDescription = "Edit")
+        }
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Default.Delete, contentDescription = "Delete")
         }
     }
 }
@@ -244,29 +342,5 @@ private fun AddQuickButtonForm(
                 }
             }) { Text("Add quick button") }
         }
-    }
-}
-
-@Composable
-private fun AnimationToggle() {
-    val context = LocalContext.current
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("Animations", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Liquid effect on the Home card, which also reacts to tilting your phone",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Switch(
-            checked = AnimationStore.enabled,
-            onCheckedChange = { AnimationStore.set(context, it) }
-        )
     }
 }

@@ -7,9 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -66,6 +63,7 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
     var editing by remember { mutableStateOf<Expense?>(null) }
 
     val tour = LocalTourTargets.current
+    val selection = LocalSelection.current
     val listState = rememberLazyListState()
 
     // During the tutorial, scroll to the part being shown
@@ -192,24 +190,14 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
             }
         }
 
-        // Recent rows: no extra padding, so they match History
         items(recent, key = { it.id }) { e ->
-            val catText = categories.firstOrNull { it.id == e.categoryId }?.display()
-            ListItem(
-                headlineContent = { ExpenseHeadline(e) },
-                supportingContent = {
-                    Text(listOfNotNull(catText, formatTime(e.timestamp)).joinToString(" · "))
-                },
-                trailingContent = {
-                    Row {
-                        IconButton(onClick = { editing = e }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit")
-                        }
-                        IconButton(onClick = { onDelete(e) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete")
-                        }
-                    }
-                }
+            ExpenseRow(
+                expense = e,
+                categoryText = categories.firstOrNull { it.id == e.categoryId }?.display(),
+                detailText = formatTime(e.timestamp),
+                selection = selection,
+                onEdit = { editing = e },
+                onDelete = { onDelete(e) }
             )
         }
     }
