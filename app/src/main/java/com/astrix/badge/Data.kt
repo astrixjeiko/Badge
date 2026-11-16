@@ -89,7 +89,7 @@ interface BadgeDao {
     fun observeSpent(start: Long, categoryId: Long?): Flow<Double>
 
     // Categories
-    @Insert suspend fun insertCategory(c: Category)
+    @Insert suspend fun insertCategory(c: Category): Long
     @Update suspend fun updateCategory(c: Category)
     @Delete suspend fun deleteCategory(c: Category)
 

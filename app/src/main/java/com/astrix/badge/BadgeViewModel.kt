@@ -9,10 +9,12 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.insertSeparators
 import androidx.paging.map
+import android.content.Context
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import androidx.glance.appwidget.updateAll
+import androidx.core.content.edit
 
 @OptIn(ExperimentalCoroutinesApi::class)
 
@@ -23,7 +25,7 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
         stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), initial)
 
     private fun refreshWidget() = viewModelScope.launch {
-        BadgeWidget().updateAll(getApplication<Application>())
+        BadgeWidget().updateAll(getApplication())
     }
 
     val recent = dao.observeRecent(RECENT_LIMIT).asState(emptyList())
@@ -103,13 +105,28 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     val budgets = dao.observeBudgets().asState(emptyList())
 
     init {
-        // First launch: add starter data
+        // First launch only: add starter categories and one quick button
         viewModelScope.launch {
-            if (dao.countCategories() == 0) {
-                listOf("🍔" to "Food", "🚌" to "Transport", "🧾" to "Misc").forEach { (icon, name) ->
-                    dao.insertCategory(Category(name = name, icon = icon))
+            val prefs = getApplication<Application>()
+                .getSharedPreferences("badge_prefs", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("seeded", false)) {
+                // Anyone who already has categories (an update, not a new install) is skipped
+                if (dao.countCategories() == 0) {
+                    val ids = mutableMapOf<String, Long>()
+                    listOf(
+                        "🍔" to "Food",
+                        "🚗" to "Transport",
+                        "🛍️" to "Shopping",
+                        "🧾" to "Bills",
+                        "📦" to "Misc"
+                    ).forEach { (icon, name) ->
+                        ids[name] = dao.insertCategory(Category(name = name, icon = icon))
+                    }
+                    dao.insertQuickButton(
+                        QuickButton(label = "Commute", amount = 20.0, categoryId = ids["Transport"])
+                    )
                 }
-                dao.insertQuickButton(QuickButton(label = "Commute", amount = 20.0, categoryId = null))
+                prefs.edit { putBoolean("seeded", true) }
             }
         }
     }
