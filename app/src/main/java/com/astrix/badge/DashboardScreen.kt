@@ -3,6 +3,7 @@ package com.astrix.badge
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -13,12 +14,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+// Gives a section the side margins and spacing, while the Recent rows below
+// keep the same spacing as the rows in History
 @Composable
-private fun Section(content: @Composable ColumnScope.() -> Unit) {
+private fun Section(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .then(modifier),
         content = content
     )
 }
@@ -37,12 +41,30 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
     var note by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Expense?>(null) }
 
-    LazyColumn(contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp)) {
+    val tour = LocalTourTargets.current
+    val listState = rememberLazyListState()
+
+    // During the tutorial, scroll to the part being shown
+    LaunchedEffect(tour.active) {
+        when (tour.active) {
+            TourTarget.SUMMARY -> listState.animateScrollToItem(0)
+            TourTarget.QUICK_ADD -> listState.animateScrollToItem(1)
+            TourTarget.CUSTOM_AMOUNT -> listState.animateScrollToItem(2)
+            else -> Unit
+        }
+    }
+
+    LazyColumn(
+        state = listState,
+        contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp)
+    ) {
         // Summary card
         item {
             Section {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .tourTarget(tour, TourTarget.SUMMARY),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Column(Modifier.padding(20.dp)) {
@@ -64,7 +86,7 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
 
         // Quick-add buttons
         item {
-            Section {
+            Section(Modifier.tourTarget(tour, TourTarget.QUICK_ADD)) {
                 Text("Quick add", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 if (quick.isEmpty()) Text("No buttons yet. Add some in Settings.")
@@ -84,7 +106,7 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
 
         // Custom amount
         item {
-            Section {
+            Section(Modifier.tourTarget(tour, TourTarget.CUSTOM_AMOUNT)) {
                 Text("Custom amount", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 CategoryChips(categories, cat) { cat = it }
@@ -100,6 +122,7 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
                 Row(verticalAlignment = Alignment.Bottom) {
                     AmountField(text, { text = it }, Modifier.weight(1f))
                     Spacer(Modifier.width(8.dp))
+                    // The 56.dp box matches the visible outline of the text box; the button is centered in it
                     Box(Modifier.height(56.dp), contentAlignment = Alignment.Center) {
                         Button(onClick = {
                             text.toDoubleOrNull()?.takeIf { it > 0 }?.let {
@@ -138,6 +161,7 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
             }
         }
 
+        // Recent rows: no extra padding, so they match History
         items(recent, key = { it.id }) { e ->
             val catText = categories.firstOrNull { it.id == e.categoryId }?.display()
             ListItem(

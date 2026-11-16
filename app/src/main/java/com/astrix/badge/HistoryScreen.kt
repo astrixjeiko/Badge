@@ -31,6 +31,7 @@ import kotlin.time.Duration.Companion.seconds
 
 @Composable
 fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
+    val tour = LocalTourTargets.current
     val rows = vm.history.collectAsLazyPagingItems()
     val categories by vm.categories.collectAsState()
     val filter by vm.filter.collectAsState()
@@ -116,6 +117,7 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 16.dp, top = 16.dp, end = 16.dp)
+                .tourTarget(tour, TourTarget.SEARCH)
         )
 
         Spacer(Modifier.height(8.dp))

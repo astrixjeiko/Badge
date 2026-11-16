@@ -17,11 +17,10 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun SettingsScreen(vm: BadgeViewModel) {
+    val tour = LocalTourTargets.current
     val categories by vm.categories.collectAsState()
     val buttons by vm.quickButtons.collectAsState()
-    // Built once per change, instead of searching the list for every row
     val categoryById = remember(categories) { categories.associateBy { it.id } }
-
     var editingCat by remember { mutableStateOf<Category?>(null) }
     var editingBtn by remember { mutableStateOf<QuickButton?>(null) }
 
@@ -38,7 +37,11 @@ fun SettingsScreen(vm: BadgeViewModel) {
 
         // Categories
         item(key = "categories-title") {
-            Text("Categories", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Categories",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.tourTarget(tour, TourTarget.SETTINGS_CATEGORIES)
+            )
         }
         items(categories, key = { "c" + it.id }, contentType = { "category" }) { c ->
             CategoryRow(
@@ -73,6 +76,13 @@ fun SettingsScreen(vm: BadgeViewModel) {
                 atLimit = buttons.size >= MAX_QUICK_BUTTONS,
                 onAdd = { label, amount, cat -> vm.addQuickButton(label, amount, cat) }
             )
+        }
+        item(key = "tutorial") {
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { vm.startTour() },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Replay tutorial") }
         }
     }
 

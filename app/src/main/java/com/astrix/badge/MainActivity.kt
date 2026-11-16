@@ -6,6 +6,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -50,6 +55,8 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val showTour by vm.showTour.collectAsState()
+    val tourTargets = remember { TourTargets() }
 
     // Deletes an expense, then offers Undo for a few seconds
     val deleteWithUndo: (Expense) -> Unit = { e ->
@@ -71,27 +78,54 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
         "Budgets" to Icons.Default.AccountBalanceWallet,
         "Settings" to Icons.Default.Settings
     )
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbar) },
-        bottomBar = {
-            NavigationBar {
-                tabs.forEachIndexed { i, (label, icon) ->
-                    NavigationBarItem(
-                        selected = tab == i,
-                        onClick = { tab = i },
-                        icon = { Icon(icon, contentDescription = label) },
-                        label = { Text(label) }
-                    )
+
+    CompositionLocalProvider(LocalTourTargets provides tourTargets) {
+        Box(Modifier.fillMaxSize()) {
+            Scaffold(
+                snackbarHost = { SnackbarHost(snackbar) },
+                bottomBar = {
+                    NavigationBar {
+                        tabs.forEachIndexed { i, (label, icon) ->
+                            NavigationBarItem(
+                                selected = tab == i,
+                                onClick = { tab = i },
+                                icon = { Icon(icon, contentDescription = label) },
+                                label = { Text(label) },
+                                modifier = if (label == "History") {
+                                    Modifier.tourTarget(tourTargets, TourTarget.NAV_HISTORY)
+                                } else {
+                                    Modifier
+                                }
+                            )
+                        }
+                    }
+                }
+            ) { padding ->
+                Box(Modifier.padding(padding)) {
+                    when (tab) {
+                        0 -> DashboardScreen(vm, onSeeAll = { tab = 1 }, onDelete = deleteWithUndo)
+                        1 -> HistoryScreen(vm, onDelete = deleteWithUndo)
+                        2 -> BudgetScreen(vm)
+                        else -> SettingsScreen(vm)
+                    }
                 }
             }
-        }
-    ) { padding ->
-        Box(Modifier.padding(padding)) {
-            when (tab) {
-                0 -> DashboardScreen(vm, onSeeAll = { tab = 1 }, onDelete = deleteWithUndo)
-                1 -> HistoryScreen(vm, onDelete = deleteWithUndo)
-                2 -> BudgetScreen(vm)
-                else -> SettingsScreen(vm)
+
+            // The tutorial sits on top of everything
+            AnimatedVisibility(
+                visible = showTour,
+                modifier = Modifier.fillMaxSize(),
+                enter = fadeIn(tween(400)),
+                exit = fadeOut(tween(250))
+            ) {
+                TourOverlay(
+                    targets = tourTargets,
+                    onTab = { tab = it },
+                    onFinish = {
+                        tab = 0
+                        vm.finishTour()
+                    }
+                )
             }
         }
     }

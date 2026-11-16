@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun BudgetScreen(vm: BadgeViewModel) {
+    val tour = LocalTourTargets.current
     val budgets by vm.budgets.collectAsState()
     val categories by vm.categories.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
@@ -26,7 +27,12 @@ fun BudgetScreen(vm: BadgeViewModel) {
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { Button(onClick = { showAdd = true }) { Text("+ New budget") } }
+        item {
+            Button(
+                onClick = { showAdd = true },
+                modifier = Modifier.tourTarget(tour, TourTarget.NEW_BUDGET)
+            ) { Text("+ New budget") }
+        }
         items(budgets, key = { it.id }) { b ->
             val spent by remember(b.period, b.categoryId) {
                 vm.spentFlow(b.period, b.categoryId)

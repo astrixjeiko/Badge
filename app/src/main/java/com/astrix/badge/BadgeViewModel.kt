@@ -104,13 +104,23 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     val quickButtons = dao.observeQuickButtons().asState(emptyList())
     val budgets = dao.observeBudgets().asState(emptyList())
 
+    private val prefs = app.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE)
+
+    // True while the tutorial is on screen
+    private val _showTour = MutableStateFlow(false)
+    val showTour: StateFlow<Boolean> = _showTour
+
+    fun startTour() { _showTour.value = true }
+
+    fun finishTour() {
+        prefs.edit { putBoolean("tour_done", true) }
+        _showTour.value = false
+    }
+
     init {
-        // First launch only: add starter categories and one quick button
         viewModelScope.launch {
-            val prefs = getApplication<Application>()
-                .getSharedPreferences("badge_prefs", Context.MODE_PRIVATE)
+            // First launch only: add starter categories and one quick button
             if (!prefs.getBoolean("seeded", false)) {
-                // Anyone who already has categories (an update, not a new install) is skipped
                 if (dao.countCategories() == 0) {
                     val ids = mutableMapOf<String, Long>()
                     listOf(
@@ -125,9 +135,13 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
                     dao.insertQuickButton(
                         QuickButton(label = "Commute", amount = 20.0, categoryId = ids["Transport"])
                     )
+                } else {
+                    // An existing install updating to this version: no tutorial needed
+                    prefs.edit { putBoolean("tour_done", true) }
                 }
                 prefs.edit { putBoolean("seeded", true) }
             }
+            _showTour.value = !prefs.getBoolean("tour_done", false)
         }
     }
 
