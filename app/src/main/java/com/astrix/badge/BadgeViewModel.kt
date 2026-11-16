@@ -50,6 +50,45 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     val weekTotal = totalFor("WEEK")
     val monthTotal = totalFor("MONTH")
 
+    val categories = dao.observeCategories().asState(emptyList())
+    val quickButtons = dao.observeQuickButtons().asState(emptyList())
+    val budgets = dao.observeBudgets().asState(emptyList())
+
+    // --- Liquid card: what counts as "full" ---
+
+    // The lowest Day budget for all spending, if there is one
+    val dailyBudget: StateFlow<Double?> = budgets
+        .map { list ->
+            list.filter { it.period == "DAY" && it.categoryId == null }.minOfOrNull { it.limitAmount }
+        }
+        .asState(null)
+
+    // Average spent per day over the last 30 days (not counting today)
+    val averageDaily: StateFlow<Double> = tick
+        .flatMapLatest {
+            val todayStart = Periods.startOf("DAY")
+            dao.observeWindow(startOfDaysAgo(30), todayStart).map { w ->
+                val first = w.firstTimestamp
+                if (first == null || w.total <= 0.0) {
+                    0.0
+                } else {
+                    val days = Math.round((todayStart - startOfDay(first)) / 86_400_000.0)
+                        .toInt()
+                        .coerceIn(1, 30)
+                    w.total / days
+                }
+            }
+        }
+        .asState(0.0)
+
+    val dailyReference: StateFlow<DailyReference> = combine(dailyBudget, averageDaily) { budget, average ->
+        when {
+            budget != null && budget > 0.0 -> DailyReference(budget, true)
+            average > 0.0 -> DailyReference(average, false)
+            else -> DailyReference(0.0, false)
+        }
+    }.asState(DailyReference(0.0, false))
+
     private val _filter = MutableStateFlow(HistoryFilter())
     val filter: StateFlow<HistoryFilter> = _filter
 
@@ -99,10 +138,6 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
         tick.map { Periods.startOf(period) }
             .distinctUntilChanged()
             .flatMapLatest { start -> dao.observeSpent(start, categoryId) }
-
-    val categories = dao.observeCategories().asState(emptyList())
-    val quickButtons = dao.observeQuickButtons().asState(emptyList())
-    val budgets = dao.observeBudgets().asState(emptyList())
 
     private val prefs = app.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE)
 

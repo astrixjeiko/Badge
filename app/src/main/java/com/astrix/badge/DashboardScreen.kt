@@ -1,5 +1,8 @@
 package com.astrix.badge
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,11 +14,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-// Gives a section the side margins and spacing, while the Recent rows below
-// keep the same spacing as the rows in History
+private const val WARN_START = 0.85f
+
 @Composable
 private fun Section(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
@@ -36,6 +40,26 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
     val month by vm.monthTotal.collectAsState()
     val categories by vm.categories.collectAsState()
     val quick by vm.quickButtons.collectAsState()
+    val reference by vm.dailyReference.collectAsState()
+
+    val ratio = if (reference.amount > 0) (today / reference.amount).toFloat() else 0f
+    val full = reference.amount > 0 && ratio >= 1f
+    val level = when {
+        reference.amount > 0 -> ratio.coerceIn(0f, 1f)
+        today > 0 -> 0.4f
+        else -> 0f
+    }
+
+    val warnTarget = ((ratio - WARN_START) / (1f - WARN_START)).coerceIn(0f, 1f)
+    val warn by animateFloatAsState(
+        targetValue = warnTarget,
+        animationSpec = if (AnimationStore.enabled) tween(700) else snap(),
+        label = "card-warning"
+    )
+    val scheme = MaterialTheme.colorScheme
+    val cardColor = lerp(scheme.primaryContainer, scheme.errorContainer, warn)
+    val cardContent = lerp(scheme.onPrimaryContainer, scheme.onErrorContainer, warn)
+
     var text by remember { mutableStateOf("") }
     var cat by remember { mutableStateOf<Long?>(null) }
     var note by remember { mutableStateOf("") }
@@ -65,19 +89,26 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
                     modifier = Modifier
                         .fillMaxWidth()
                         .tourTarget(tour, TourTarget.SUMMARY),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    colors = CardDefaults.cardColors(containerColor = cardColor, contentColor = cardContent)
                 ) {
-                    Column(Modifier.padding(20.dp)) {
-                        Text("Spent today", style = MaterialTheme.typography.labelLarge)
-                        Text(
-                            money(today),
-                            style = MaterialTheme.typography.displayMedium,
-                            fontWeight = FontWeight.Bold
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        LiquidBackground(
+                            level = level,
+                            full = full,
+                            modifier = Modifier.matchParentSize()
                         )
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                            Text("Week: " + money(week))
-                            Text("Month: " + money(month))
+                        Column(Modifier.padding(20.dp)) {
+                            Text("Spent today", style = MaterialTheme.typography.labelLarge)
+                            Text(
+                                money(today),
+                                style = MaterialTheme.typography.displayMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                                Text("Week: " + money(week))
+                                Text("Month: " + money(month))
+                            }
                         }
                     }
                 }

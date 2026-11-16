@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         CurrencyStore.load(this)
+        AnimationStore.load(this)
         setContent { BadgeTheme { BadgeApp() } }
     }
 

@@ -175,10 +175,18 @@ fun rangeLabel(from: Long, to: Long): String {
 fun dayKey(dayStart: Long): String =
     SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(dayStart))
 
-fun Category.display(): String = if (icon.isBlank()) name else icon + " " + name
+fun Category.display(): String = if (icon.isBlank()) name else "$icon $name"
 
 // Shortens long text with "…" (counts emoji as one character)
 fun String.ellipsize(maxChars: Int): String {
     if (codePointCount(0, length) <= maxChars) return this
     return substring(0, offsetByCodePoints(0, maxChars - 1)).trimEnd() + "…"
 }
+
+fun startOfDaysAgo(days: Int): Long = Calendar.getInstance().apply {
+    timeInMillis = Periods.startOf("DAY")
+    add(Calendar.DAY_OF_YEAR, -days)
+}.timeInMillis
+
+// What a "full" glass means on Home: the daily budget, or else the usual daily spending
+data class DailyReference(val amount: Double, val isBudget: Boolean)

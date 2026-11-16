@@ -47,6 +47,8 @@ data class Budget(
 
 data class DayTotal(val day: String, val total: Double)
 
+data class SpendWindow(val total: Double, val firstTimestamp: Long?)
+
 @Dao
 interface BadgeDao {
     // Expenses
@@ -125,6 +127,12 @@ interface BadgeDao {
     fun observeDayTotals(
         search: String, categoryId: Long?, startMs: Long, endMs: Long
     ): Flow<List<DayTotal>>
+
+    @Query(
+        "SELECT COALESCE(SUM(amount), 0.0) AS total, MIN(timestamp) AS firstTimestamp " +
+                "FROM expenses WHERE timestamp >= :start AND timestamp < :end"
+    )
+    fun observeWindow(start: Long, end: Long): Flow<SpendWindow>
 }
 
 val MIGRATION_1_2 = object : Migration(1, 2) {

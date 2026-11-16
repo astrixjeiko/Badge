@@ -33,6 +33,8 @@ fun SettingsScreen(vm: BadgeViewModel) {
             Text("Currency", style = MaterialTheme.typography.titleLarge)
         }
         item(key = "currency") { CurrencyPicker() }
+        item(key = "gap-anim") { Spacer(Modifier.height(8.dp)) }
+        item(key = "animations") { AnimationToggle() }
         item(key = "gap-1") { Spacer(Modifier.height(16.dp)) }
 
         // Categories
@@ -242,5 +244,29 @@ private fun AddQuickButtonForm(
                 }
             }) { Text("Add quick button") }
         }
+    }
+}
+
+@Composable
+private fun AnimationToggle() {
+    val context = LocalContext.current
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Animations", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Liquid effect on the Home card, which also reacts to tilting your phone",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = AnimationStore.enabled,
+            onCheckedChange = { AnimationStore.set(context, it) }
+        )
     }
 }
