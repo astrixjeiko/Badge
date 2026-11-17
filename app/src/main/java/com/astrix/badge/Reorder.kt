@@ -3,14 +3,20 @@ package com.astrix.badge
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -22,7 +28,6 @@ import androidx.compose.ui.zIndex
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-// Drag-to-reorder for rows inside a LazyColumn. Rows are identified by their keys.
 class ReorderState(
     private val listState: LazyListState,
     private val scope: CoroutineScope,
@@ -40,7 +45,6 @@ class ReorderState(
     private val draggingInfo: LazyListItemInfo?
         get() = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == draggingKey }
 
-    // How far the dragged row is drawn from where its slot currently is
     val draggingOffset: Float
         get() = draggingInfo?.let { initialOffset + draggedDelta - it.offset } ?: 0f
 
@@ -57,6 +61,7 @@ class ReorderState(
         draggedDelta += dy
         val dragging = draggingInfo ?: return
 
+        // Keep the row inside its own group
         val group = listState.layoutInfo.visibleItemsInfo.filter { sameGroup(dragging.key, it.key) }
         if (group.isNotEmpty()) {
             val minTop = group.minOf { it.offset }.toFloat()
@@ -75,6 +80,7 @@ class ReorderState(
                     sameGroup(dragging.key, item.key)
         } ?: return
 
+        // Keeps the list from scrolling by itself when the first visible row is involved
         if (dragging.index == listState.firstVisibleItemIndex || target.index == listState.firstVisibleItemIndex) {
             listState.requestScrollToItem(
                 listState.firstVisibleItemIndex,
@@ -118,12 +124,11 @@ fun rememberReorderState(
     }
 }
 
-// A row that can be dragged. `content` receives the modifier to put on the drag handle.
 @Composable
 fun LazyItemScope.ReorderRow(
     reorder: ReorderState,
     key: Any,
-    content: @Composable (handle: Modifier) -> Unit
+    content: @Composable (dragHandle: @Composable () -> Unit) -> Unit
 ) {
     val haptics = LocalHapticFeedback.current
     val dragging = reorder.draggingKey == key
@@ -136,7 +141,7 @@ fun LazyItemScope.ReorderRow(
         Modifier.animateItem()
     }
 
-    val handle = Modifier.pointerInput(key) {
+    val dragGestures = Modifier.pointerInput(key) {
         detectDragGestures(
             onDragStart = {
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -150,6 +155,7 @@ fun LazyItemScope.ReorderRow(
             onDragCancel = { reorder.end() }
         )
     }
+    val dragHandle: @Composable () -> Unit = { DragHandle(dragGestures) }
 
     Surface(
         modifier = rowModifier.fillMaxWidth(),
@@ -157,6 +163,18 @@ fun LazyItemScope.ReorderRow(
         color = if (dragging) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
         shadowElevation = if (dragging) 8.dp else 0.dp
     ) {
-        content(handle)
+        content(dragHandle)
+    }
+}
+
+// The grip you drag to reorder
+@Composable
+private fun DragHandle(modifier: Modifier = Modifier) {
+    Box(modifier.size(40.dp), contentAlignment = Alignment.Center) {
+        Icon(
+            Icons.Default.DragHandle,
+            contentDescription = "Drag to reorder",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

@@ -12,7 +12,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.lifecycleScope
 import com.astrix.badge.ui.theme.BadgeTheme
 import kotlinx.coroutines.launch
@@ -55,7 +54,7 @@ class QuickAddActivity : ComponentActivity() {
                                     dao.insertExpense(
                                         Expense(amount = a, categoryId = cat, note = note.trim())
                                     )
-                                    BadgeWidget().updateAll(applicationContext)
+                                    refreshAllWidgets(applicationContext)
                                     finishAndRemoveTask()
                                 }
                             }

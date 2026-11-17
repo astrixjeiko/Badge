@@ -2,7 +2,6 @@ package com.astrix.badge
 
 import android.app.Application
 import androidx.core.content.edit
-import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -27,7 +26,7 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
         stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), initial)
 
     private fun refreshWidget() = viewModelScope.launch {
-        BadgeWidget().updateAll(getApplication())
+        refreshAllWidgets(getApplication())
     }
 
     val recent = dao.observeRecent(RECENT_LIMIT).asState(emptyList())
@@ -252,6 +251,13 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
         BadgeDatabase.get(getApplication()).withTransaction {
             ids.forEachIndexed { index, id -> dao.setQuickButtonPosition(id, index) }
         }
+        refreshWidget()
+    }
+
+    fun restoreCategory(c: Category) = viewModelScope.launch { dao.insertCategory(c) }
+
+    fun restoreQuickButton(b: QuickButton) = viewModelScope.launch {
+        dao.insertQuickButton(b)
         refreshWidget()
     }
 }

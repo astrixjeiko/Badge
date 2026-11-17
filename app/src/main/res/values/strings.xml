@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Badge</string>
+    <string name="widget_quick_label">Badge widget</string>
+    <string name="widget_today_label">Badge widget mini</string>
 </resources>

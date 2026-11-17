@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,7 +33,11 @@ private fun <T> List<T>.moved(fromKey: String, toKey: String, keyOf: (T) -> Stri
 }
 
 @Composable
-fun SettingsScreen(vm: BadgeViewModel) {
+fun SettingsScreen(
+    vm: BadgeViewModel,
+    onDeleteCategory: (Category) -> Unit,
+    onDeleteButton: (QuickButton) -> Unit
+) {
     val tour = LocalTourTargets.current
     val categories by vm.categories.collectAsState()
     val buttons by vm.quickButtons.collectAsState()
@@ -98,12 +101,12 @@ fun SettingsScreen(vm: BadgeViewModel) {
             )
         }
         items(catOrder, key = { "cat-" + it.id }, contentType = { "category" }) { c ->
-            ReorderRow(reorder, "cat-" + c.id) { handle ->
+            ReorderRow(reorder, "cat-" + c.id) { dragHandle ->
                 CategoryRow(
                     category = c,
-                    handle = handle,
+                    dragHandle = dragHandle,
                     onEdit = { editingCat = c },
-                    onDelete = { vm.deleteCategory(c) }
+                    onDelete = { onDeleteCategory(c) }
                 )
             }
         }
@@ -120,13 +123,13 @@ fun SettingsScreen(vm: BadgeViewModel) {
             )
         }
         items(btnOrder, key = { "btn-" + it.id }, contentType = { "button" }) { b ->
-            ReorderRow(reorder, "btn-" + b.id) { handle ->
+            ReorderRow(reorder, "btn-" + b.id) { dragHandle ->
                 QuickButtonRow(
                     button = b,
                     categoryText = categoryById[b.categoryId]?.display() ?: "No category",
-                    handle = handle,
+                    dragHandle = dragHandle,
                     onEdit = { editingBtn = b },
-                    onDelete = { vm.deleteQuickButton(b) }
+                    onDelete = { onDeleteButton(b) }
                 )
             }
         }
@@ -205,23 +208,9 @@ private fun AnimationToggle() {
 }
 
 @Composable
-private fun DragHandleIcon(handle: Modifier) {
-    Box(
-        Modifier.size(40.dp).then(handle),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            Icons.Default.DragHandle,
-            contentDescription = "Drag to reorder",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
 private fun CategoryRow(
     category: Category,
-    handle: Modifier,
+    dragHandle: @Composable () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -229,7 +218,7 @@ private fun CategoryRow(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        DragHandleIcon(handle)
+        dragHandle()
         Text(category.display(), modifier = Modifier.weight(1f))
         IconButton(onClick = onEdit) {
             Icon(Icons.Default.Edit, contentDescription = "Edit")
@@ -280,7 +269,7 @@ private fun AddCategoryRow(onAdd: (String, String) -> Unit) {
 private fun QuickButtonRow(
     button: QuickButton,
     categoryText: String,
-    handle: Modifier,
+    dragHandle: @Composable () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -288,7 +277,7 @@ private fun QuickButtonRow(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        DragHandleIcon(handle)
+        dragHandle()
         Column(Modifier.weight(1f)) {
             Text(button.label + ": " + money(button.amount))
             Text(

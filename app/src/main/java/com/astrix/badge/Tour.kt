@@ -34,10 +34,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-// ---------------------------------------------------------------------------
 // Targets: parts of the app the tour can spotlight
-// ---------------------------------------------------------------------------
-
 enum class TourTarget {
     SUMMARY, QUICK_ADD, CUSTOM_AMOUNT, NAV_HISTORY, SEARCH, NEW_BUDGET, SETTINGS_CATEGORIES
 }
@@ -98,13 +95,11 @@ private val TOUR_STEPS = listOf(
     ),
     TourStep(
         null, 0, "Add the widget",
-        "The fastest way to use Badge is from your home screen. Long-press an empty spot, tap Widgets, find Badge, and drag it on. Then tap an item and press Confirm to log an expense."
+        "The fastest way to use Badge is from your home screen. Long-press an empty spot, tap Widgets, and find Badge. The large widget has quick buttons: tap an item, then press Confirm. The small one shows today's total with a + button for custom amounts."
     )
 )
 
-// ---------------------------------------------------------------------------
 // The overlay
-// ---------------------------------------------------------------------------
 
 @Composable
 fun TourOverlay(targets: TourTargets, onTab: (Int) -> Unit, onFinish: () -> Unit) {

@@ -294,6 +294,7 @@ class ConfirmAction : ActionCallback {
         }
 
         dao.insertExpense(Expense(amount = b.amount, categoryId = b.categoryId, note = b.label))
+        BadgeMiniWidget().updateAll(context)
 
         val stamp = System.currentTimeMillis()
         updateAppWidgetState(context, glanceId) { prefs ->

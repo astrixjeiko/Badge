@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
         android:allowBackup="true"
@@ -14,7 +13,6 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name"
             android:theme="@style/Theme.Badge.Starting"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -30,13 +28,28 @@
             android:taskAffinity=""
             android:theme="@style/Theme.Badge.Translucent" />
 
-        <receiver android:name=".BadgeWidgetReceiver" android:exported="true">
+        <receiver
+            android:name=".BadgeWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_quick_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/badge_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".BadgeMiniWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_today_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/badge_mini_widget_info" />
         </receiver>
     </application>
 

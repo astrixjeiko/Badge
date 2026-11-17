@@ -93,6 +93,16 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
         showUndo("Budget deleted") { vm.restoreBudgets(listOf(b)) }
     }
 
+    val deleteCategoryWithUndo: (Category) -> Unit = { c ->
+        vm.deleteCategory(c)
+        showUndo("Category deleted") { vm.restoreCategory(c) }
+    }
+
+    val deleteButtonWithUndo: (QuickButton) -> Unit = { b ->
+        vm.deleteQuickButton(b)
+        showUndo("Quick button deleted") { vm.restoreQuickButton(b) }
+    }
+
     val deleteSelected: () -> Unit = {
         val expenses = selection.expenses.values.toList()
         val budgets = selection.budgets.values.toList()
@@ -168,7 +178,11 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
                         0 -> DashboardScreen(vm, onSeeAll = { tab = 1 }, onDelete = deleteWithUndo)
                         1 -> HistoryScreen(vm, onDelete = deleteWithUndo)
                         2 -> BudgetScreen(vm, onDelete = deleteBudgetWithUndo)
-                        else -> SettingsScreen(vm)
+                        else -> SettingsScreen(
+                            vm,
+                            onDeleteCategory = deleteCategoryWithUndo,
+                            onDeleteButton = deleteButtonWithUndo
+                        )
                     }
                 }
             }
