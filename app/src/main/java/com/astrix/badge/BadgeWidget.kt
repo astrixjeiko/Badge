@@ -35,7 +35,6 @@ import kotlin.time.Duration.Companion.seconds
 
 val ButtonIdKey = ActionParameters.Key<Long>("buttonId")
 
-// Saved per widget: which tile is selected, and the message under the total
 val SelectedKey = longPreferencesKey("selected_button")
 val MessageKey = stringPreferencesKey("message")
 val MessageStampKey = longPreferencesKey("message_stamp")
@@ -154,7 +153,6 @@ fun WidgetContent(
             }
         }
 
-        // Message line, directly under the total
         Spacer(GlanceModifier.height(2.dp))
         Text(
             message ?: if (buttons.isEmpty()) "Use + to add an expense" else "Tap an item, then confirm",
@@ -254,7 +252,6 @@ fun QuickTile(
     }
 }
 
-// Tapping a tile only selects it (tapping it again deselects it)
 class SelectAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val id = parameters[ButtonIdKey] ?: return
@@ -276,7 +273,6 @@ class SelectAction : ActionCallback {
     }
 }
 
-// Tapping Confirm saves the selected tile as an expense
 class ConfirmAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         CurrencyStore.load(context)
@@ -293,7 +289,9 @@ class ConfirmAction : ActionCallback {
             return
         }
 
-        dao.insertExpense(Expense(amount = b.amount, categoryId = b.categoryId, note = b.label))
+        dao.insertExpense(
+            Expense(amount = b.amount, categoryId = b.categoryId, note = b.label, accountId = b.accountId)
+        )
         BadgeMiniWidget().updateAll(context)
 
         val stamp = System.currentTimeMillis()
@@ -304,7 +302,6 @@ class ConfirmAction : ActionCallback {
         }
         BadgeWidget().update(context, glanceId)
 
-        // Clear the "Added" message after a few seconds, unless something newer happened
         delay(3.seconds)
         if (getAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId)[MessageStampKey] == stamp) {
             updateAppWidgetState(context, glanceId) { prefs -> prefs.remove(MessageKey) }

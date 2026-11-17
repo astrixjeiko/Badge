@@ -134,6 +134,7 @@ enum class DateRange(val label: String) {
 data class HistoryFilter(
     val query: String = "",
     val categoryId: Long? = null,
+    val accountId: Long? = null,
     val range: DateRange = DateRange.ALL,
     val customFrom: Long = 0L,
     val customTo: Long = Long.MAX_VALUE,

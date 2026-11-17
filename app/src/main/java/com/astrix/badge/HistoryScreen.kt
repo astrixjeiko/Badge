@@ -1,11 +1,11 @@
 package com.astrix.badge
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
@@ -33,6 +33,7 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
     val selection = LocalSelection.current
     val rows = vm.history.collectAsLazyPagingItems()
     val categories by vm.categories.collectAsState()
+    val accounts by vm.accounts.collectAsState()
     val filter by vm.filter.collectAsState()
     val total by vm.historyTotal.collectAsState()
     val count by vm.historyCount.collectAsState()
@@ -44,15 +45,12 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
     var showRangePicker by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    // Search runs 250 ms after you stop typing
     LaunchedEffect(queryText) {
         delay(250.milliseconds)
         vm.updateFilter { it.copy(query = queryText) }
     }
-    // Jump back to the top whenever the filter or sort changes
     LaunchedEffect(filter) { listState.scrollToItem(0) }
 
-    // After Undo, scroll up to the restored expense if it is above what is on screen
     LaunchedEffect(Unit) {
         vm.restored.collect { id ->
             val index = withTimeoutOrNull(2.seconds) {
@@ -63,10 +61,8 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
                 }.first { it >= 0 }
             }
             if (index != null) {
-                // Let the list finish redrawing before measuring where we are
                 withFrameNanos { }
                 withFrameNanos { }
-                // Scroll one row higher so the day header stays visible
                 val target = (index - 1).coerceAtLeast(0)
                 val above = target < listState.firstVisibleItemIndex ||
                         (target == listState.firstVisibleItemIndex && listState.firstVisibleItemScrollOffset > 0)
@@ -77,52 +73,55 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
 
     val hasFilters = queryText.isNotBlank() ||
             filter.categoryId != null ||
+            filter.accountId != null ||
             filter.range != DateRange.ALL
     val showDates = filter.sort == SortOrder.HIGHEST || filter.sort == SortOrder.LOWEST
 
     Column(Modifier.fillMaxSize()) {
-        // Search with the sort button inside, full width
-        OutlinedTextField(
-            value = queryText,
-            onValueChange = { queryText = it },
-            placeholder = { Text("Search") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            trailingIcon = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (queryText.isNotEmpty()) {
-                        IconButton(onClick = { queryText = "" }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear search")
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, top = 16.dp, end = 16.dp)
+        ) {
+            OutlinedTextField(
+                value = queryText,
+                onValueChange = { queryText = it },
+                placeholder = { Text("Search") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (queryText.isNotEmpty()) {
+                            IconButton(onClick = { queryText = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear search")
+                            }
                         }
-                    }
-                    Box {
-                        IconButton(onClick = { sortMenu = true }) {
-                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
-                        }
-                        DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                            SortOrder.entries.forEach { s ->
-                                DropdownMenuItem(
-                                    text = { Text((if (filter.sort == s) "✓ " else "") + s.label) },
-                                    onClick = {
-                                        vm.updateFilter { it.copy(sort = s) }
-                                        sortMenu = false
-                                    }
-                                )
+                        Box {
+                            IconButton(onClick = { sortMenu = true }) {
+                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
+                            }
+                            DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                                SortOrder.entries.forEach { s ->
+                                    DropdownMenuItem(
+                                        text = { Text((if (filter.sort == s) "✓ " else "") + s.label) },
+                                        onClick = {
+                                            vm.updateFilter { it.copy(sort = s) }
+                                            sortMenu = false
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
-                }
-            },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, top = 16.dp, end = 16.dp)
-                .tourTarget(tour, TourTarget.SEARCH)
-        )
+                },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .tourTarget(tour, TourTarget.SEARCH)
+            )
 
-        Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp))
 
-        // Date range chips
-        Box(Modifier.padding(horizontal = 16.dp)) {
+            // Date range chips
             Row(
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -143,18 +142,18 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
                     )
                 }
             }
-        }
 
-        Spacer(Modifier.height(4.dp))
-
-        // Category chips
-        Box(Modifier.padding(horizontal = 16.dp)) {
+            // Category chips
             CategoryChips(categories, filter.categoryId, anyLabel = "All") { id ->
                 vm.updateFilter { it.copy(categoryId = id) }
             }
+
+            // Account chips
+            AccountChips(accounts, filter.accountId, anyLabel = "All") { id ->
+                vm.updateFilter { it.copy(accountId = id) }
+            }
         }
 
-        // Summary
         Row(
             Modifier
                 .fillMaxWidth()
@@ -225,6 +224,7 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
                                 expense = e,
                                 categoryText = categories.firstOrNull { it.id == e.categoryId }?.display(),
                                 detailText = if (showDates) formatTime(e.timestamp) else formatClock(e.timestamp),
+                                account = accounts.firstOrNull { it.id == e.accountId },
                                 selection = selection,
                                 onEdit = { editing = e },
                                 onDelete = { onDelete(e) }
@@ -249,6 +249,7 @@ fun HistoryScreen(vm: BadgeViewModel, onDelete: (Expense) -> Unit) {
         EditExpenseDialog(
             expense = e,
             categories = categories,
+            accounts = accounts,
             onDismiss = { editing = null },
             onSave = { vm.updateExpense(it); editing = null }
         )
@@ -272,9 +273,10 @@ fun DateRangeDialog(onDismiss: () -> Unit, onConfirm: (Long, Long) -> Unit) {
     val start = state.selectedStartDateMillis
     val end = state.selectedEndDateMillis
 
+    // One short line that guides you, then shows the chosen range
     val headlineText = when {
         start == null -> "Choose a start date"
-        end == null -> "Choose an end date"
+        end == null -> "Now choose an end date"
         else -> rangeLabel(pickerDayStart(start), nextDayStart(pickerDayStart(end)))
     }
 

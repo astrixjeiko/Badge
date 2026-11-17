@@ -68,12 +68,16 @@ fun EditCategoryDialog(
 fun EditQuickButtonDialog(
     button: QuickButton,
     categories: List<Category>,
+    accounts: List<Account>,
     onDismiss: () -> Unit,
     onSave: (QuickButton) -> Unit
 ) {
     var label by remember { mutableStateOf(button.label) }
     var amount by remember { mutableStateOf(plainAmount(button.amount)) }
     var cat by remember { mutableStateOf(button.categoryId) }
+    var acc by remember {
+        mutableStateOf(button.accountId?.takeIf { id -> accounts.any { it.id == id } })
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Edit quick button") },
@@ -90,14 +94,19 @@ fun EditQuickButtonDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 AmountField(amount, { amount = it }, Modifier.fillMaxWidth())
-                CategoryChips(categories, cat) { cat = it }
+                Column {
+                    CategoryChips(categories, cat) { cat = it }
+                    AccountChips(accounts, acc) { acc = it }
+                }
             }
         },
         confirmButton = {
             TextButton(onClick = {
                 val a = amount.toDoubleOrNull()
                 if (label.isNotBlank() && a != null && a > 0) {
-                    onSave(button.copy(label = label.trim(), amount = a, categoryId = cat))
+                    onSave(
+                        button.copy(label = label.trim(), amount = a, categoryId = cat, accountId = acc)
+                    )
                 }
             }) { Text("Save") }
         },
@@ -111,13 +120,17 @@ fun EditQuickButtonDialog(
 fun EditExpenseDialog(
     expense: Expense,
     categories: List<Category>,
+    accounts: List<Account>,
     onDismiss: () -> Unit,
     onSave: (Expense) -> Unit
 ) {
     var note by remember { mutableStateOf(expense.note) }
     var amount by remember { mutableStateOf(plainAmount(expense.amount)) }
     var cat by remember { mutableStateOf(expense.categoryId) }
-    var timestamp by remember { mutableLongStateOf(expense.timestamp) }
+    var acc by remember {
+        mutableStateOf(expense.accountId?.takeIf { id -> accounts.any { it.id == id } })
+    }
+    var timestamp by remember { mutableStateOf(expense.timestamp) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
 
@@ -137,7 +150,10 @@ fun EditExpenseDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 AmountField(amount, { amount = it }, Modifier.fillMaxWidth())
-                CategoryChips(categories, cat) { cat = it }
+                Column {
+                    CategoryChips(categories, cat) { cat = it }
+                    AccountChips(accounts, acc) { acc = it }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
                         onClick = { showDatePicker = true },
@@ -154,7 +170,12 @@ fun EditExpenseDialog(
             TextButton(onClick = {
                 val a = amount.toDoubleOrNull()
                 if (a != null && a > 0) {
-                    onSave(expense.copy(note = note.trim(), amount = a, categoryId = cat, timestamp = timestamp))
+                    onSave(
+                        expense.copy(
+                            note = note.trim(), amount = a, categoryId = cat,
+                            accountId = acc, timestamp = timestamp
+                        )
+                    )
                 }
             }) { Text("Save") }
         },

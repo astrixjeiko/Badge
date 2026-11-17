@@ -83,7 +83,7 @@ private val TOUR_STEPS = listOf(
     ),
     TourStep(
         TourTarget.SEARCH, 1, "Search, filter, and sort",
-        "Find an expense by name, category, or amount. Use the chips below to filter by date or category, and the sort icon to reorder the list."
+        "Find an expense by name, category, account, or amount. Use the chips below to filter by date, category, or account, and the sort icon to reorder the list."
     ),
     TourStep(
         TourTarget.NEW_BUDGET, 2, "Budgets",

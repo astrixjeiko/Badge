@@ -51,6 +51,7 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     val monthTotal = totalFor("MONTH")
 
     val categories = dao.observeCategories().asState(emptyList())
+    val accounts = dao.observeAccounts().asState(emptyList())
     val quickButtons = dao.observeQuickButtons().asState(emptyList())
     val budgets = dao.observeBudgets().asState(emptyList())
 
@@ -100,7 +101,7 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
 
     val history: Flow<PagingData<HistoryItem>> = resolved.flatMapLatest { r ->
         Pager(PagingConfig(pageSize = 30, enablePlaceholders = false)) {
-            dao.pagedFiltered(r.f.query.trim(), r.f.categoryId, r.startMs, r.endMs, r.f.sort.code)
+            dao.pagedFiltered(r.f.query.trim(), r.f.categoryId, r.f.accountId, r.startMs, r.endMs, r.f.sort.code)
         }.flow.map { paging ->
             val items = paging.map<Expense, HistoryItem> { HistoryItem.Entry(it) }
             if (r.f.sort == SortOrder.NEWEST || r.f.sort == SortOrder.OLDEST) {
@@ -115,15 +116,15 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     }.cachedIn(viewModelScope)
 
     val historyTotal: StateFlow<Double> = resolved.flatMapLatest { r ->
-        dao.observeFilteredTotal(r.f.query.trim(), r.f.categoryId, r.startMs, r.endMs)
+        dao.observeFilteredTotal(r.f.query.trim(), r.f.categoryId, r.f.accountId, r.startMs, r.endMs)
     }.asState(0.0)
 
     val historyCount: StateFlow<Int> = resolved.flatMapLatest { r ->
-        dao.observeFilteredCount(r.f.query.trim(), r.f.categoryId, r.startMs, r.endMs)
+        dao.observeFilteredCount(r.f.query.trim(), r.f.categoryId, r.f.accountId, r.startMs, r.endMs)
     }.asState(0)
 
     val dayTotals: StateFlow<Map<String, Double>> = resolved.flatMapLatest { r ->
-        dao.observeDayTotals(r.f.query.trim(), r.f.categoryId, r.startMs, r.endMs)
+        dao.observeDayTotals(r.f.query.trim(), r.f.categoryId, r.f.accountId, r.startMs, r.endMs)
             .map { list -> list.associate { it.day to it.total } }
     }.asState(emptyMap())
 
@@ -134,7 +135,6 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefs = app.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE)
 
-    // True while the tutorial is on screen
     private val _showTour = MutableStateFlow(false)
     val showTour: StateFlow<Boolean> = _showTour
 
@@ -147,7 +147,6 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch {
-            // First launch only: add starter categories and one quick button
             if (!prefs.getBoolean("seeded", false)) {
                 if (dao.countCategories() == 0) {
                     val ids = mutableMapOf<String, Long>()
@@ -163,8 +162,10 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
                     dao.insertQuickButton(
                         QuickButton(label = "Commute", amount = 20.0, categoryId = ids["Transport"])
                     )
+                    STARTER_ACCOUNTS.forEachIndexed { index, (name, color) ->
+                        dao.insertAccount(Account(name = name, color = color, position = index))
+                    }
                 } else {
-                    // An existing install updating to this version: no tutorial needed
                     prefs.edit { putBoolean("tour_done", true) }
                 }
                 prefs.edit { putBoolean("seeded", true) }
@@ -173,8 +174,15 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun addExpense(amount: Double, categoryId: Long?, note: String = "") = viewModelScope.launch {
-        dao.insertExpense(Expense(amount = amount, categoryId = categoryId, note = note))
+    fun addExpense(
+        amount: Double,
+        categoryId: Long?,
+        note: String = "",
+        accountId: Long? = null
+    ) = viewModelScope.launch {
+        dao.insertExpense(
+            Expense(amount = amount, categoryId = categoryId, note = note, accountId = accountId)
+        )
         refreshWidget()
     }
     fun deleteExpense(e: Expense) = viewModelScope.launch { dao.deleteExpense(e)
@@ -192,11 +200,19 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun deleteCategory(c: Category) = viewModelScope.launch { dao.deleteCategory(c) }
 
-    fun addQuickButton(label: String, amount: Double, categoryId: Long?) = viewModelScope.launch {
+    fun addQuickButton(
+        label: String,
+        amount: Double,
+        categoryId: Long?,
+        accountId: Long? = null
+    ) = viewModelScope.launch {
         if (quickButtons.value.size >= MAX_QUICK_BUTTONS) return@launch
         val next = (quickButtons.value.maxOfOrNull { it.position } ?: -1) + 1
         dao.insertQuickButton(
-            QuickButton(label = label, amount = amount, categoryId = categoryId, position = next)
+            QuickButton(
+                label = label, amount = amount, categoryId = categoryId,
+                position = next, accountId = accountId
+            )
         )
         refreshWidget()
     }
@@ -238,7 +254,7 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun filteredExpenses(): List<Expense> {
         val f = _filter.value
         val (start, end) = f.bounds()
-        return dao.filteredExpenses(f.query.trim(), f.categoryId, start, end)
+        return dao.filteredExpenses(f.query.trim(), f.categoryId, f.accountId, start, end)
     }
 
     fun reorderCategories(ids: List<Long>) = viewModelScope.launch {
@@ -259,5 +275,31 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     fun restoreQuickButton(b: QuickButton) = viewModelScope.launch {
         dao.insertQuickButton(b)
         refreshWidget()
+    }
+
+    fun addAccount(name: String, color: Int) = viewModelScope.launch {
+        val next = (accounts.value.maxOfOrNull { it.position } ?: -1) + 1
+        dao.insertAccount(Account(name = name, color = color, position = next))
+    }
+
+    fun updateAccount(a: Account) = viewModelScope.launch { dao.updateAccount(a) }
+    fun deleteAccount(a: Account) = viewModelScope.launch { dao.deleteAccount(a) }
+    fun restoreAccount(a: Account) = viewModelScope.launch { dao.insertAccount(a) }
+
+    fun reorderAccounts(ids: List<Long>) = viewModelScope.launch {
+        BadgeDatabase.get(getApplication()).withTransaction {
+            ids.forEachIndexed { index, id -> dao.setAccountPosition(id, index) }
+        }
+    }
+
+    fun lastAccountId(): Long? = prefs.getLong("last_account", -1L).takeIf { it >= 0 }
+    fun rememberAccount(id: Long?) { prefs.edit { putLong("last_account", id ?: -1L) } }
+
+    fun setAccount(list: List<Expense>, accountId: Long?) = viewModelScope.launch {
+        dao.updateExpenses(list.map { it.copy(accountId = accountId) })
+    }
+
+    fun restoreAccounts(list: List<Expense>) = viewModelScope.launch {
+        dao.updateExpenses(list)
     }
 }

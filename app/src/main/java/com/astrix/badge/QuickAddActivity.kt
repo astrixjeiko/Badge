@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import com.astrix.badge.ui.theme.BadgeTheme
 import kotlinx.coroutines.launch
@@ -20,12 +21,18 @@ class QuickAddActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val dao = BadgeDatabase.get(this).dao()
+        val prefs = getSharedPreferences("badge_prefs", MODE_PRIVATE)
         setContent {
             BadgeTheme {
                 val categories by dao.observeCategories().collectAsState(initial = emptyList())
+                val accounts by dao.observeAccounts().collectAsState(initial = emptyList())
                 var cat by remember { mutableStateOf<Long?>(null) }
+                var account by remember {
+                    mutableStateOf(prefs.getLong("last_account", -1L).takeIf { it >= 0 })
+                }
                 var note by remember { mutableStateOf("") }
                 var text by remember { mutableStateOf("") }
+                val chosenAccount = account?.takeIf { id -> accounts.any { it.id == id } }
 
                 AlertDialog(
                     onDismissRequest = { finishAndRemoveTask() },
@@ -35,7 +42,10 @@ class QuickAddActivity : ComponentActivity() {
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.verticalScroll(rememberScrollState())
                         ) {
-                            CategoryChips(categories, cat) { cat = it }
+                            Column {
+                                CategoryChips(categories, cat) { cat = it }
+                                AccountChips(accounts, chosenAccount) { account = it }
+                            }
                             OutlinedTextField(
                                 value = note,
                                 onValueChange = { note = it },
@@ -52,8 +62,14 @@ class QuickAddActivity : ComponentActivity() {
                             if (a != null && a > 0) {
                                 lifecycleScope.launch {
                                     dao.insertExpense(
-                                        Expense(amount = a, categoryId = cat, note = note.trim())
+                                        Expense(
+                                            amount = a,
+                                            categoryId = cat,
+                                            note = note.trim(),
+                                            accountId = chosenAccount
+                                        )
                                     )
+                                    prefs.edit { putLong("last_account", chosenAccount ?: -1L) }
                                     refreshAllWidgets(applicationContext)
                                     finishAndRemoveTask()
                                 }

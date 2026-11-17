@@ -37,6 +37,9 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
     val month by vm.monthTotal.collectAsState()
     val categories by vm.categories.collectAsState()
     val quick by vm.quickButtons.collectAsState()
+    val accounts by vm.accounts.collectAsState()
+    var account by remember { mutableStateOf(vm.lastAccountId()) }
+    val chosenAccount = account?.takeIf { id -> accounts.any { it.id == id } }
     val reference by vm.dailyReference.collectAsState()
 
     val ratio = if (reference.amount > 0) (today / reference.amount).toFloat() else 0f
@@ -66,7 +69,6 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
     val selection = LocalSelection.current
     val listState = rememberLazyListState()
 
-    // During the tutorial, scroll to the part being shown
     LaunchedEffect(tour.active) {
         when (tour.active) {
             TourTarget.SUMMARY -> listState.animateScrollToItem(0)
@@ -123,7 +125,7 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
                     quick.forEach { b ->
                         val icon = categories.firstOrNull { it.id == b.categoryId }?.icon.orEmpty()
                         AssistChip(
-                            onClick = { vm.addExpense(b.amount, b.categoryId, b.label) },
+                            onClick = { vm.addExpense(b.amount, b.categoryId, b.label, b.accountId) },
                             label = {
                                 Text((if (icon.isBlank()) "" else "$icon ") + b.label + " " + money(b.amount))
                             }
@@ -138,7 +140,13 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
             Section(Modifier.tourTarget(tour, TourTarget.CUSTOM_AMOUNT)) {
                 Text("Custom amount", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
-                CategoryChips(categories, cat) { cat = it }
+                Column {
+                    CategoryChips(categories, cat) { cat = it }
+                    AccountChips(accounts, chosenAccount) {
+                        account = it
+                        vm.rememberAccount(it)
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = note,
@@ -151,11 +159,10 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
                 Row(verticalAlignment = Alignment.Bottom) {
                     AmountField(text, { text = it }, Modifier.weight(1f))
                     Spacer(Modifier.width(8.dp))
-                    // The 56.dp box matches the visible outline of the text box; the button is centered in it
                     Box(Modifier.height(56.dp), contentAlignment = Alignment.Center) {
                         Button(onClick = {
                             text.toDoubleOrNull()?.takeIf { it > 0 }?.let {
-                                vm.addExpense(it, cat, note.trim())
+                                vm.addExpense(it, cat, note.trim(), chosenAccount)
                                 text = ""
                                 note = ""
                             }
@@ -195,6 +202,7 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
                 expense = e,
                 categoryText = categories.firstOrNull { it.id == e.categoryId }?.display(),
                 detailText = formatTime(e.timestamp),
+                account = accounts.firstOrNull { it.id == e.accountId },
                 selection = selection,
                 onEdit = { editing = e },
                 onDelete = { onDelete(e) }
@@ -202,11 +210,11 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
         }
     }
 
-    // Edit pop-up: shows only while an expense is being edited
     editing?.let { e ->
         EditExpenseDialog(
             expense = e,
             categories = categories,
+            accounts = accounts,
             onDismiss = { editing = null },
             onSave = { vm.updateExpense(it); editing = null }
         )

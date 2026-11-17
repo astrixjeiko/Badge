@@ -15,29 +15,37 @@ data class Category(
     @ColumnInfo(defaultValue = "0") val position: Int = 0
 )
 
+@Entity(tableName = "accounts")
+data class Account(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val color: Int,
+    @ColumnInfo(defaultValue = "0") val position: Int = 0
+)
+
 @Entity(
     tableName = "expenses",
-    indices = [Index("timestamp"), Index("categoryId")]
+    indices = [Index("timestamp"), Index("categoryId"), Index("accountId")]
 )
 data class Expense(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val amount: Double,
     val categoryId: Long?,
     val note: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val accountId: Long? = null
 )
 
-// A customizable one-tap button, e.g. "Commute" = 20
 @Entity(tableName = "quick_buttons")
 data class QuickButton(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val label: String,
     val amount: Double,
     val categoryId: Long?,
-    @ColumnInfo(defaultValue = "0") val position: Int = 0
+    @ColumnInfo(defaultValue = "0") val position: Int = 0,
+    val accountId: Long? = null
 )
 
-// period is "DAY", "WEEK", "MONTH" or "YEAR"; categoryId null = all spending
 @Entity(tableName = "budgets")
 data class Budget(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -51,12 +59,20 @@ data class DayTotal(val day: String, val total: Double)
 
 data class SpendWindow(val total: Double, val firstTimestamp: Long?)
 
+val STARTER_ACCOUNTS = listOf(
+    "Cash" to 0xFFFFB300.toInt(),
+    "E-Wallet" to 0xFF1E88E5.toInt(),
+    "Card" to 0xFF8E24AA.toInt()
+)
+
 internal const val FILTER_WHERE =
     "(:categoryId IS NULL OR categoryId = :categoryId) " +
+            "AND (:accountId IS NULL OR accountId = :accountId) " +
             "AND timestamp >= :startMs AND timestamp < :endMs " +
             "AND (:search = '' OR note LIKE '%' || :search || '%' " +
             "OR CAST(amount AS TEXT) LIKE '%' || :search || '%' " +
-            "OR categoryId IN (SELECT id FROM categories WHERE name LIKE '%' || :search || '%'))"
+            "OR categoryId IN (SELECT id FROM categories WHERE name LIKE '%' || :search || '%') " +
+            "OR accountId IN (SELECT id FROM accounts WHERE name LIKE '%' || :search || '%'))"
 
 @Dao
 interface BadgeDao {
@@ -66,6 +82,7 @@ interface BadgeDao {
     @Delete suspend fun deleteExpense(e: Expense)
     @Insert suspend fun insertExpenses(list: List<Expense>)
     @Delete suspend fun deleteExpenses(list: List<Expense>)
+    @Update suspend fun updateExpenses(list: List<Expense>)
 
     @Query("SELECT * FROM expenses ORDER BY timestamp DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<Expense>>
@@ -78,23 +95,22 @@ interface BadgeDao {
                 "timestamp DESC"
     )
     fun pagedFiltered(
-        search: String, categoryId: Long?, startMs: Long, endMs: Long, sort: Int
+        search: String, categoryId: Long?, accountId: Long?, startMs: Long, endMs: Long, sort: Int
     ): PagingSource<Int, Expense>
 
-    // Every expense matching the filter (used by "Select all" in History)
     @Query("SELECT * FROM expenses WHERE $FILTER_WHERE")
     suspend fun filteredExpenses(
-        search: String, categoryId: Long?, startMs: Long, endMs: Long
+        search: String, categoryId: Long?, accountId: Long?, startMs: Long, endMs: Long
     ): List<Expense>
 
     @Query("SELECT COALESCE(SUM(amount), 0.0) FROM expenses WHERE $FILTER_WHERE")
     fun observeFilteredTotal(
-        search: String, categoryId: Long?, startMs: Long, endMs: Long
+        search: String, categoryId: Long?, accountId: Long?, startMs: Long, endMs: Long
     ): Flow<Double>
 
     @Query("SELECT COUNT(*) FROM expenses WHERE $FILTER_WHERE")
     fun observeFilteredCount(
-        search: String, categoryId: Long?, startMs: Long, endMs: Long
+        search: String, categoryId: Long?, accountId: Long?, startMs: Long, endMs: Long
     ): Flow<Int>
 
     @Query(
@@ -102,13 +118,12 @@ interface BadgeDao {
                 "SUM(amount) AS total FROM expenses WHERE " + FILTER_WHERE + " GROUP BY day"
     )
     fun observeDayTotals(
-        search: String, categoryId: Long?, startMs: Long, endMs: Long
+        search: String, categoryId: Long?, accountId: Long?, startMs: Long, endMs: Long
     ): Flow<List<DayTotal>>
 
     @Query("SELECT COALESCE(SUM(amount), 0.0) FROM expenses WHERE timestamp >= :start")
     fun observeTotalSince(start: Long): Flow<Double>
 
-    // categoryId = null means "all spending"
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM expenses " +
                 "WHERE timestamp >= :start AND (:categoryId IS NULL OR categoryId = :categoryId)"
@@ -134,6 +149,17 @@ interface BadgeDao {
 
     @Query("UPDATE categories SET position = :position WHERE id = :id")
     suspend fun setCategoryPosition(id: Long, position: Int)
+
+    // Accounts
+    @Insert suspend fun insertAccount(a: Account): Long
+    @Update suspend fun updateAccount(a: Account)
+    @Delete suspend fun deleteAccount(a: Account)
+
+    @Query("SELECT * FROM accounts ORDER BY position, id")
+    fun observeAccounts(): Flow<List<Account>>
+
+    @Query("UPDATE accounts SET position = :position WHERE id = :id")
+    suspend fun setAccountPosition(id: Long, position: Int)
 
     // Quick buttons
     @Insert suspend fun insertQuickButton(b: QuickButton)
@@ -178,7 +204,6 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
-// New: a position for categories and quick buttons. Starting it at the id keeps the current order.
 val MIGRATION_4_5 = object : Migration(4, 5) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE categories ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
@@ -188,9 +213,29 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS accounts (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "name TEXT NOT NULL, " +
+                    "color INTEGER NOT NULL, " +
+                    "position INTEGER NOT NULL DEFAULT 0)"
+        )
+        db.execSQL("ALTER TABLE expenses ADD COLUMN accountId INTEGER")
+        db.execSQL("ALTER TABLE quick_buttons ADD COLUMN accountId INTEGER")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_expenses_accountId ON expenses (accountId)")
+        STARTER_ACCOUNTS.forEachIndexed { index, (name, color) ->
+            db.execSQL(
+                "INSERT INTO accounts (name, color, position) VALUES ('$name', $color, $index)"
+            )
+        }
+    }
+}
+
 @Database(
-    entities = [Expense::class, Category::class, QuickButton::class, Budget::class],
-    version = 5,
+    entities = [Expense::class, Category::class, QuickButton::class, Budget::class, Account::class],
+    version = 6,
     exportSchema = false
 )
 abstract class BadgeDatabase : RoomDatabase() {
@@ -201,8 +246,9 @@ abstract class BadgeDatabase : RoomDatabase() {
         fun get(context: Context): BadgeDatabase = INSTANCE ?: synchronized(this) {
             INSTANCE ?: Room.databaseBuilder(
                 context.applicationContext, BadgeDatabase::class.java, "badge.db"
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
-                .build().also { INSTANCE = it }
+            ).addMigrations(
+                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6
+            ).build().also { INSTANCE = it }
         }
     }
 }

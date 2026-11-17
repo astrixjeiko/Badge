@@ -61,16 +61,15 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
     val showTour by vm.showTour.collectAsState()
     val tourTargets = remember { TourTargets() }
     val selection = remember { SelectionState() }
+    val accounts by vm.accounts.collectAsState()
+    var showSetAccount by remember { mutableStateOf(false) }
 
-    // Keeps the last count so the bar doesn't show "0 selected" while it slides away
     val lastCount = remember { mutableIntStateOf(0) }
     if (selection.count > 0) lastCount.intValue = selection.count
 
-    // Selecting ends when you switch tabs or press back
     LaunchedEffect(tab) { selection.clear() }
     BackHandler(enabled = selection.active) { selection.clear() }
 
-    // Shows a message with Undo for a few seconds
     val showUndo: (String, () -> Unit) -> Unit = { message, onUndo ->
         scope.launch {
             snackbar.currentSnackbarData?.dismiss()
@@ -103,6 +102,11 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
         showUndo("Quick button deleted") { vm.restoreQuickButton(b) }
     }
 
+    val deleteAccountWithUndo: (Account) -> Unit = { a ->
+        vm.deleteAccount(a)
+        showUndo("Account deleted") { vm.restoreAccount(a) }
+    }
+
     val deleteSelected: () -> Unit = {
         val expenses = selection.expenses.values.toList()
         val budgets = selection.budgets.values.toList()
@@ -116,7 +120,23 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
         }
     }
 
-    // History selects everything matching the current filter; Budgets selects every budget
+    val setAccountForSelected: (Long?) -> Unit = { accountId ->
+        val list = selection.expenses.values.toList()
+        selection.clear()
+        showSetAccount = false
+        vm.setAccount(list, accountId)
+        val name = accounts.firstOrNull { it.id == accountId }?.name
+        val message = if (name != null) {
+            plural(list.size, "expense") + " set to " + name
+        } else {
+            "Account cleared on " + plural(list.size, "expense")
+        }
+        showUndo(message) { vm.restoreAccounts(list) }
+    }
+
+    val onSetAccount: (() -> Unit)? =
+        if (selection.expenses.isNotEmpty()) ({ showSetAccount = true }) else null
+
     val selectAllExpenses: () -> Unit = {
         scope.launch { selection.selectExpenses(vm.filteredExpenses()) }
     }
@@ -150,6 +170,7 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
                             count = lastCount.intValue,
                             onClose = { selection.clear() },
                             onSelectAll = onSelectAll,
+                            onSetAccount = onSetAccount,
                             onDelete = deleteSelected
                         )
                     }
@@ -181,13 +202,21 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
                         else -> SettingsScreen(
                             vm,
                             onDeleteCategory = deleteCategoryWithUndo,
+                            onDeleteAccount = deleteAccountWithUndo,
                             onDeleteButton = deleteButtonWithUndo
                         )
                     }
                 }
             }
+            if (showSetAccount && selection.expenses.isNotEmpty()) {
+                SetAccountDialog(
+                    count = selection.expenses.size,
+                    accounts = accounts,
+                    onDismiss = { showSetAccount = false },
+                    onPick = setAccountForSelected
+                )
+            }
 
-            // The tutorial sits on top of everything
             AnimatedVisibility(
                 visible = showTour,
                 modifier = Modifier.fillMaxSize(),

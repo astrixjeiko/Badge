@@ -20,6 +20,7 @@ private fun groupOf(key: Any): String? {
     val k = key.toString()
     return when {
         k.startsWith("cat-") -> "cat"
+        k.startsWith("acc-") -> "acc"
         k.startsWith("btn-") -> "btn"
         else -> null
     }
@@ -36,17 +37,22 @@ private fun <T> List<T>.moved(fromKey: String, toKey: String, keyOf: (T) -> Stri
 fun SettingsScreen(
     vm: BadgeViewModel,
     onDeleteCategory: (Category) -> Unit,
+    onDeleteAccount: (Account) -> Unit,
     onDeleteButton: (QuickButton) -> Unit
 ) {
     val tour = LocalTourTargets.current
     val categories by vm.categories.collectAsState()
+    val accounts by vm.accounts.collectAsState()
     val buttons by vm.quickButtons.collectAsState()
     val categoryById = remember(categories) { categories.associateBy { it.id } }
+    val accountById = remember(accounts) { accounts.associateBy { it.id } }
 
     var catOrder by remember(categories) { mutableStateOf(categories) }
+    var accOrder by remember(accounts) { mutableStateOf(accounts) }
     var btnOrder by remember(buttons) { mutableStateOf(buttons) }
 
     var editingCat by remember { mutableStateOf<Category?>(null) }
+    var editingAcc by remember { mutableStateOf<Account?>(null) }
     var editingBtn by remember { mutableStateOf<QuickButton?>(null) }
 
     val listState = rememberLazyListState()
@@ -61,6 +67,12 @@ fun SettingsScreen(
                     catOrder = moved
                     changed
                 }
+                "acc" -> {
+                    val moved = accOrder.moved(from.toString(), to.toString()) { "acc-" + it.id }
+                    val changed = moved !== accOrder
+                    accOrder = moved
+                    changed
+                }
                 "btn" -> {
                     val moved = btnOrder.moved(from.toString(), to.toString()) { "btn-" + it.id }
                     val changed = moved !== btnOrder
@@ -73,6 +85,8 @@ fun SettingsScreen(
         onDrop = {
             val catIds = catOrder.map { it.id }
             if (catIds != categories.map { it.id }) vm.reorderCategories(catIds)
+            val accIds = accOrder.map { it.id }
+            if (accIds != accounts.map { it.id }) vm.reorderAccounts(accIds)
             val btnIds = btnOrder.map { it.id }
             if (btnIds != buttons.map { it.id }) vm.reorderQuickButtons(btnIds)
         }
@@ -115,6 +129,25 @@ fun SettingsScreen(
         }
         item(key = "gap-2") { Spacer(Modifier.height(16.dp)) }
 
+        // Accounts
+        item(key = "accounts-title") {
+            Text("Accounts", style = MaterialTheme.typography.titleLarge)
+        }
+        items(accOrder, key = { "acc-" + it.id }, contentType = { "account" }) { a ->
+            ReorderRow(reorder, "acc-" + a.id) { dragHandle ->
+                AccountRow(
+                    account = a,
+                    dragHandle = dragHandle,
+                    onEdit = { editingAcc = a },
+                    onDelete = { onDeleteAccount(a) }
+                )
+            }
+        }
+        item(key = "add-account") {
+            AddAccountRow(onAdd = { name, color -> vm.addAccount(name, color) })
+        }
+        item(key = "gap-3") { Spacer(Modifier.height(16.dp)) }
+
         // Quick buttons
         item(key = "buttons-title") {
             Text(
@@ -127,6 +160,7 @@ fun SettingsScreen(
                 QuickButtonRow(
                     button = b,
                     categoryText = categoryById[b.categoryId]?.display() ?: "No category",
+                    account = accountById[b.accountId],
                     dragHandle = dragHandle,
                     onEdit = { editingBtn = b },
                     onDelete = { onDeleteButton(b) }
@@ -136,8 +170,9 @@ fun SettingsScreen(
         item(key = "add-button") {
             AddQuickButtonForm(
                 categories = categories,
+                accounts = accounts,
                 atLimit = buttons.size >= MAX_QUICK_BUTTONS,
-                onAdd = { label, amount, cat -> vm.addQuickButton(label, amount, cat) }
+                onAdd = { label, amount, cat, acc -> vm.addQuickButton(label, amount, cat, acc) }
             )
         }
         item(key = "tutorial") {
@@ -156,10 +191,18 @@ fun SettingsScreen(
             onSave = { vm.updateCategory(it); editingCat = null }
         )
     }
+    editingAcc?.let { a ->
+        EditAccountDialog(
+            account = a,
+            onDismiss = { editingAcc = null },
+            onSave = { vm.updateAccount(it); editingAcc = null }
+        )
+    }
     editingBtn?.let { b ->
         EditQuickButtonDialog(
             button = b,
             categories = categories,
+            accounts = accounts,
             onDismiss = { editingBtn = null },
             onSave = { vm.updateQuickButton(it); editingBtn = null }
         )
@@ -230,6 +273,28 @@ private fun CategoryRow(
 }
 
 @Composable
+private fun AccountRow(
+    account: Account,
+    dragHandle: @Composable () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        dragHandle()
+        Box(Modifier.weight(1f)) { AccountPill(account) }
+        IconButton(onClick = onEdit) {
+            Icon(Icons.Default.Edit, contentDescription = "Edit")
+        }
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Default.Delete, contentDescription = "Delete")
+        }
+    }
+}
+
+@Composable
 private fun AddCategoryRow(onAdd: (String, String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var icon by remember { mutableStateOf("") }
@@ -266,9 +331,50 @@ private fun AddCategoryRow(onAdd: (String, String) -> Unit) {
 }
 
 @Composable
+private fun AddAccountRow(onAdd: (String, Int) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var colorIndex by remember { mutableIntStateOf(5) }
+    var color by remember { mutableIntStateOf(ACCOUNT_COLORS[5]) }
+    var showPicker by remember { mutableStateOf(false) }
+
+    Row(verticalAlignment = Alignment.Bottom) {
+        ColorPickerButton(color) { showPicker = true }
+        Spacer(Modifier.width(8.dp))
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("New account") },
+            singleLine = true,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(8.dp))
+        Box(Modifier.height(56.dp), contentAlignment = Alignment.Center) {
+            Button(onClick = {
+                if (name.isNotBlank()) {
+                    onAdd(name.trim(), color)
+                    name = ""
+                    colorIndex = (colorIndex + 1) % ACCOUNT_COLORS.size
+                    color = ACCOUNT_COLORS[colorIndex]
+                }
+            }) { Text("Add") }
+        }
+    }
+
+    if (showPicker) {
+        ColorPickerDialog(
+            initial = color,
+            previewName = name,
+            onDismiss = { showPicker = false },
+            onPick = { color = it; showPicker = false }
+        )
+    }
+}
+
+@Composable
 private fun QuickButtonRow(
     button: QuickButton,
     categoryText: String,
+    account: Account?,
     dragHandle: @Composable () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
@@ -280,11 +386,17 @@ private fun QuickButtonRow(
         dragHandle()
         Column(Modifier.weight(1f)) {
             Text(button.label + ": " + money(button.amount))
-            Text(
-                categoryText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    categoryText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (account != null) {
+                    Spacer(Modifier.width(6.dp))
+                    AccountPill(account)
+                }
+            }
         }
         IconButton(onClick = onEdit) {
             Icon(Icons.Default.Edit, contentDescription = "Edit")
@@ -298,12 +410,14 @@ private fun QuickButtonRow(
 @Composable
 private fun AddQuickButtonForm(
     categories: List<Category>,
+    accounts: List<Account>,
     atLimit: Boolean,
-    onAdd: (String, Double, Long?) -> Unit
+    onAdd: (String, Double, Long?, Long?) -> Unit
 ) {
     var label by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
     var cat by remember { mutableStateOf<Long?>(null) }
+    var acc by remember { mutableStateOf<Long?>(null) }
 
     if (atLimit) {
         Text(
@@ -321,11 +435,14 @@ private fun AddQuickButtonForm(
                 modifier = Modifier.fillMaxWidth()
             )
             AmountField(amount, { amount = it }, Modifier.fillMaxWidth())
-            CategoryChips(categories, cat) { cat = it }
+            Column {
+                CategoryChips(categories, cat) { cat = it }
+                AccountChips(accounts, acc) { acc = it }
+            }
             Button(onClick = {
                 val a = amount.toDoubleOrNull()
                 if (label.isNotBlank() && a != null && a > 0) {
-                    onAdd(label.trim(), a, cat)
+                    onAdd(label.trim(), a, cat, acc)
                     label = ""
                     amount = ""
                 }

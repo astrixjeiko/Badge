@@ -1,5 +1,6 @@
 package com.astrix.badge
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -7,6 +8,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,9 +17,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
-// What is selected right now (expenses on Home/History, or budgets on Budgets)
 class SelectionState {
     var expenses by mutableStateOf<Map<Long, Expense>>(emptyMap())
         private set
@@ -51,12 +53,12 @@ val LocalSelection = compositionLocalOf { SelectionState() }
 
 fun plural(n: Int, word: String): String = n.toString() + " " + word + if (n == 1) "" else "s"
 
-// The bar at the top while selecting
 @Composable
 fun SelectionBar(
     count: Int,
     onClose: () -> Unit,
     onSelectAll: (() -> Unit)?,
+    onSetAccount: (() -> Unit)?,
     onDelete: () -> Unit
 ) {
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, tonalElevation = 3.dp) {
@@ -81,6 +83,11 @@ fun SelectionBar(
                     Icon(Icons.Default.SelectAll, contentDescription = "Select all")
                 }
             }
+            if (onSetAccount != null) {
+                IconButton(onClick = onSetAccount) {
+                    Icon(Icons.Default.Sell, contentDescription = "Set account")
+                }
+            }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = "Delete selected")
             }
@@ -88,12 +95,12 @@ fun SelectionBar(
     }
 }
 
-// An expense row used on Home (Recent) and in History
 @Composable
 fun ExpenseRow(
     expense: Expense,
     categoryText: String?,
     detailText: String,
+    account: Account?,
     selection: SelectionState,
     onEdit: () -> Unit,
     onDelete: () -> Unit
@@ -102,36 +109,53 @@ fun ExpenseRow(
     val selecting = selection.active
     val haptics = LocalHapticFeedback.current
 
-    ListItem(
-        modifier = Modifier.pointerInput(expense, selecting) {
-            detectTapGestures(
-                onLongPress = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    selection.toggle(expense)
-                },
-                onTap = { if (selecting) selection.toggle(expense) }
-            )
-        },
-        colors = ListItemDefaults.colors(
-            containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
-        ),
-        headlineContent = { ExpenseHeadline(expense) },
-        supportingContent = {
-            Text(listOfNotNull(categoryText, detailText).joinToString(" · "))
-        },
-        trailingContent = {
-            if (selecting) {
-                Checkbox(checked = selected, onCheckedChange = null)
-            } else {
-                Row {
-                    IconButton(onClick = onEdit) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit")
-                    }
-                    IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete")
-                    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+            .pointerInput(expense, selecting) {
+                detectTapGestures(
+                    onLongPress = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        selection.toggle(expense)
+                    },
+                    onTap = { if (selecting) selection.toggle(expense) }
+                )
+            }
+            .padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            ExpenseHeadline(expense)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (account != null) {
+                    AccountPill(account, Modifier.padding(end = 6.dp))
+                }
+                Text(
+                    listOfNotNull(categoryText, detailText).joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (selecting) {
+            Checkbox(checked = selected, onCheckedChange = null)
+        } else {
+            Row {
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete")
                 }
             }
         }
-    )
+    }
 }
