@@ -122,7 +122,7 @@ fun ExpenseRow(
                     onTap = { if (selecting) selection.toggle(expense) }
                 )
             }
-            .padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+            .padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(

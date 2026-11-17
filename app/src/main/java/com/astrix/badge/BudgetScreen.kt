@@ -18,6 +18,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextAlign
 
 @Composable
 fun BudgetScreen(vm: BadgeViewModel, onDelete: (Budget) -> Unit) {
@@ -29,81 +30,96 @@ fun BudgetScreen(vm: BadgeViewModel, onDelete: (Budget) -> Unit) {
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Budget?>(null) }
 
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Button(
-                onClick = { showAdd = true },
-                modifier = Modifier.tourTarget(tour, TourTarget.NEW_BUDGET)
-            ) { Text("+ New budget") }
-        }
-        items(budgets, key = { it.id }) { b ->
-            val spent by remember(b.period, b.categoryId) {
-                vm.spentFlow(b.period, b.categoryId)
-            }.collectAsState(initial = 0.0)
-            val ratio = (spent / b.limitAmount).toFloat().coerceIn(0f, 1f)
-            val over = spent > b.limitAmount
-            val catName = categories.firstOrNull { it.id == b.categoryId }?.display() ?: "All spending"
-            val detail = catName + " · " + b.period.lowercase()
-            val selected = selection.isSelected(b)
-            val selecting = selection.active
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Button(
+                    onClick = { showAdd = true },
+                    modifier = Modifier.tourTarget(tour, TourTarget.NEW_BUDGET)
+                ) { Text("+ New budget") }
+            }
+            items(budgets, key = { it.id }) { b ->
+                val spent by remember(b.period, b.categoryId) {
+                    vm.spentFlow(b.period, b.categoryId)
+                }.collectAsState(initial = 0.0)
+                val ratio = (spent / b.limitAmount).toFloat().coerceIn(0f, 1f)
+                val over = spent > b.limitAmount
+                val catName = categories.firstOrNull { it.id == b.categoryId }?.display() ?: "All spending"
+                val detail = catName + " · " + b.period.lowercase()
+                val selected = selection.isSelected(b)
+                val selecting = selection.active
 
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .pointerInput(b, selecting) {
-                        detectTapGestures(
-                            onLongPress = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                selection.toggle(b)
-                            },
-                            onTap = { if (selecting) selection.toggle(b) }
-                        )
-                    },
-                colors = if (selected) {
-                    CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                } else {
-                    CardDefaults.cardColors()
-                }
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                b.name.ifBlank { detail },
-                                style = MaterialTheme.typography.titleMedium
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(b, selecting) {
+                            detectTapGestures(
+                                onLongPress = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    selection.toggle(b)
+                                },
+                                onTap = { if (selecting) selection.toggle(b) }
                             )
-                            if (b.name.isNotBlank()) {
-                                Text(
-                                    detail,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        if (selecting) {
-                            Checkbox(checked = selected, onCheckedChange = null)
-                        } else {
-                            IconButton(onClick = { editing = b }) {
-                                Icon(Icons.Default.Edit, contentDescription = "Edit")
-                            }
-                            IconButton(onClick = { onDelete(b) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete")
-                            }
-                        }
+                        },
+                    colors = if (selected) {
+                        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    } else {
+                        CardDefaults.cardColors()
                     }
-                    Spacer(Modifier.height(4.dp))
-                    LinearProgressIndicator(
-                        progress = { ratio },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(money(spent) + " of " + money(b.limitAmount))
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    b.name.ifBlank { detail },
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                if (b.name.isNotBlank()) {
+                                    Text(
+                                        detail,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (selecting) {
+                                Checkbox(checked = selected, onCheckedChange = null)
+                            } else {
+                                IconButton(onClick = { editing = b }) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                                }
+                                IconButton(onClick = { onDelete(b) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            progress = { ratio },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(money(spent) + " of " + money(b.limitAmount))
+                    }
                 }
             }
+        }
+
+        // Shown in the middle of the screen when there are no budgets
+        if (budgets.isEmpty()) {
+            Text(
+                "No budgets yet. Tap + New budget to add.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 32.dp)
+            )
         }
     }
 
