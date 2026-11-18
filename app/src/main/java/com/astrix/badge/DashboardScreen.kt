@@ -30,7 +30,12 @@ private fun Section(modifier: Modifier = Modifier, content: @Composable ColumnSc
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense) -> Unit) {
+fun DashboardScreen(
+    vm: BadgeViewModel,
+    onSeeAll: () -> Unit,
+    onOpenStats: () -> Unit,
+    onDelete: (Expense) -> Unit
+) {
     val recent by vm.recent.collectAsState()
     val today by vm.todayTotal.collectAsState()
     val week by vm.weekTotal.collectAsState()
@@ -117,6 +122,7 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
                         }
                     }
                 }
+                Spacer(Modifier.height(8.dp))
             }
         }
 
@@ -193,14 +199,15 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
         // Insights
         item(key = "insights") {
             Section {
+                Spacer(Modifier.height(8.dp))
                 InsightsSection(
                     period = insightPeriod,
                     state = insights,
                     categories = categories,
                     tour = tour,
                     onPeriod = { vm.setInsightPeriod(it) },
+                    onSeeAll = onOpenStats,
                     onCategoryClick = { categoryId ->
-                        // Opens History filtered to this category and this period
                         vm.updateFilter {
                             HistoryFilter(
                                 sort = it.sort,

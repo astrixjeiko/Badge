@@ -35,10 +35,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-// ---------------------------------------------------------------------------
 // Periods
-// ---------------------------------------------------------------------------
-
 enum class InsightPeriod(val label: String) {
     WEEK("This week"),
     MONTH("This month"),
@@ -47,13 +44,13 @@ enum class InsightPeriod(val label: String) {
 }
 
 data class InsightRange(
-    val start: Long,        // start of the period
-    val end: Long,          // end of the period (not included)
-    val prevStart: Long,    // the same stretch of the period before it
+    val start: Long,
+    val end: Long,
+    val prevStart: Long,
     val prevEnd: Long,
-    val days: Int,          // days passed so far, counting today (the whole period once it is over)
-    val name: String,       // "this month"
-    val prevName: String    // "the same days last month"
+    val days: Int,
+    val name: String,
+    val prevName: String
 )
 
 // Everything the Insights card shows
@@ -98,12 +95,10 @@ fun rangeFor(period: InsightPeriod, now: Long = System.currentTimeMillis()): Ins
         }
     }
 
-    // Days passed so far in the period, counting today
     val tomorrow = today.plusDays(1)
     val upTo = if (tomorrow.isBefore(s.end)) tomorrow else s.end
     val days = ChronoUnit.DAYS.between(s.start, upTo).toInt().coerceAtLeast(1)
 
-    // The same stretch of the previous period, never running into the current one
     val sameStretchEnd = s.prevStart.plusDays(days.toLong())
     val prevEnd = if (sameStretchEnd.isBefore(s.start)) sameStretchEnd else s.start
 
@@ -111,12 +106,9 @@ fun rangeFor(period: InsightPeriod, now: Long = System.currentTimeMillis()): Ins
     return InsightRange(ms(s.start), ms(s.end), ms(s.prevStart), ms(prevEnd), days, s.name, s.prevName)
 }
 
-// ---------------------------------------------------------------------------
-// Animation helpers (all of them follow the Animations setting)
-// ---------------------------------------------------------------------------
-
+// Animation helpers
 @Composable
-private fun animatedFloat(target: Float, delayMs: Int, label: String): State<Float> {
+fun animatedFloat(target: Float, delayMs: Int, label: String): State<Float> {
     val spec: AnimationSpec<Float> = if (AnimationStore.enabled) {
         tween(durationMillis = 700, delayMillis = delayMs, easing = FastOutSlowInEasing)
     } else {
@@ -125,29 +117,23 @@ private fun animatedFloat(target: Float, delayMs: Int, label: String): State<Flo
     return animateFloatAsState(targetValue = target, animationSpec = spec, label = label)
 }
 
-// Counts up from 0 when it first appears, then glides to new values
 @Composable
-private fun animatedAmount(exact: Double, visible: Boolean, delayMs: Int): Double {
+fun animatedAmount(exact: Double, visible: Boolean, delayMs: Int): Double {
     val target = if (visible) exact.toFloat() else 0f
     val shown by animatedFloat(target, delayMs, "amount")
-    // Once it arrives, show the exact number (a float can lose a few cents on big amounts)
     return if (visible && shown == target) exact else shown.toDouble()
 }
 
-// ---------------------------------------------------------------------------
 // The Insights card
-// ---------------------------------------------------------------------------
-
-private class BarRow(
+class BarRow(
     val key: String,
     val label: String,
     val amount: Double,
-    val categoryId: Long?,   // null for "Other" and "No category", which can't be opened in History
+    val categoryId: Long?,
     val rank: Int
 )
 
-// The top four categories, with everything smaller grouped as "Other"
-private fun buildRows(totals: List<CategoryTotal>, byId: Map<Long, Category>): List<BarRow> {
+fun buildRows(totals: List<CategoryTotal>, byId: Map<Long, Category>): List<BarRow> {
     val positive = totals.filter { it.total > 0 }
     val rows = positive.take(4).mapIndexed { index, t ->
         val category = t.categoryId?.let { byId[it] }
@@ -170,7 +156,6 @@ private fun buildRows(totals: List<CategoryTotal>, byId: Map<Long, Category>): L
 private class Tile(val label: String, val value: String, val sub: String)
 
 private fun weekdayName(sqliteWeekday: Int): String {
-    // SQLite counts Sunday as 0; java.time counts Monday as 1
     val day = if (sqliteWeekday == 0) DayOfWeek.SUNDAY else DayOfWeek.of(sqliteWeekday)
     return day.getDisplayName(JavaTextStyle.FULL, Locale.getDefault()) + "s"
 }
@@ -182,14 +167,14 @@ fun InsightsSection(
     categories: List<Category>,
     tour: TourTargets,
     onPeriod: (InsightPeriod) -> Unit,
-    onCategoryClick: (Long) -> Unit
+    onCategoryClick: (Long) -> Unit,
+    onSeeAll: () -> Unit
 ) {
     val byId = remember(categories) { categories.associateBy { it.id } }
     val rows = remember(state.categories, byId) { buildRows(state.categories, byId) }
     val stats = state.stats
     val range = state.range
 
-    // The headline starts at 0 and counts up the first time the card appears
     var appeared by remember { mutableStateOf(!AnimationStore.enabled) }
     LaunchedEffect(Unit) { appeared = true }
 
@@ -220,7 +205,6 @@ fun InsightsSection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
-                // Headline: the total and how it compares
                 val shownTotal = animatedAmount(stats.total, appeared, 0)
                 Text(
                     "Spent " + range.name,
@@ -291,12 +275,17 @@ fun InsightsSection(
                     }
                 }
             }
+            Spacer(Modifier.height(4.dp))
+            TextButton(
+                onClick = onSeeAll,
+                modifier = Modifier.align(Alignment.End)
+            ) { Text("See all statistics") }
         }
     }
 }
 
 @Composable
-private fun CompareLine(total: Double, prevTotal: Double, prevName: String) {
+fun CompareLine(total: Double, prevTotal: Double, prevName: String) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val diff = total - prevTotal
     when {
@@ -342,7 +331,6 @@ private fun InsightBarRow(
     index: Int,
     onClick: (() -> Unit)?
 ) {
-    // Each bar grows from 0 when it first appears; when the period changes, existing bars glide
     var visible by remember { mutableStateOf(!AnimationStore.enabled) }
     LaunchedEffect(Unit) { visible = true }
 

@@ -70,6 +70,8 @@ data class Budget(
 
 data class DayTotal(val day: String, val total: Double)
 data class CategoryTotal(val categoryId: Long?, val total: Double)
+data class AccountTotal(val accountId: Long?, val total: Double)
+data class UntaggedCounts(val noCategory: Int, val noAccount: Int)
 data class RangeStats(val total: Double, val expenseCount: Int)
 data class WeekdayTotal(val weekday: Int, val total: Double)
 
@@ -239,6 +241,32 @@ interface BadgeDao {
                 "GROUP BY weekday ORDER BY total DESC LIMIT 1"
     )
     fun observeTopWeekday(start: Long, end: Long): Flow<WeekdayTotal?>
+
+    // Statistics
+    @Query(
+        "SELECT strftime('%Y-%m', timestamp / 1000, 'unixepoch', 'localtime') AS day, " +
+                "SUM(amount) AS total FROM expenses WHERE timestamp >= :start AND timestamp < :end GROUP BY day"
+    )
+    fun observeMonthTotals(start: Long, end: Long): Flow<List<DayTotal>>
+
+    @Query(
+        "SELECT accountId AS accountId, SUM(amount) AS total FROM expenses " +
+                "WHERE timestamp >= :start AND timestamp < :end GROUP BY accountId ORDER BY total DESC"
+    )
+    fun observeAccountTotals(start: Long, end: Long): Flow<List<AccountTotal>>
+
+    @Query(
+        "SELECT COALESCE(SUM(CASE WHEN categoryId IS NULL THEN 1 ELSE 0 END), 0) AS noCategory, " +
+                "COALESCE(SUM(CASE WHEN accountId IS NULL THEN 1 ELSE 0 END), 0) AS noAccount " +
+                "FROM expenses WHERE timestamp >= :start AND timestamp < :end"
+    )
+    fun observeUntagged(start: Long, end: Long): Flow<UntaggedCounts>
+
+    @Query(
+        "SELECT COUNT(DISTINCT strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch', 'localtime')) " +
+                "FROM expenses WHERE timestamp >= :start AND timestamp < :end"
+    )
+    fun observeSpendDays(start: Long, end: Long): Flow<Int>
 }
 
 val MIGRATION_1_2 = object : Migration(1, 2) {

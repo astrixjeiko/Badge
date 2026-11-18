@@ -52,8 +52,7 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     val weekTotal = totalFor("WEEK")
     val monthTotal = totalFor("MONTH")
 
-    // --- Insights on Home ---
-
+    // Insights on Home
     private val _insightPeriod = MutableStateFlow(InsightPeriod.MONTH)
     val insightPeriod: StateFlow<InsightPeriod> = _insightPeriod
 
@@ -74,6 +73,28 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
         }
         .asState(
             InsightsState(rangeFor(InsightPeriod.MONTH), emptyList(), RangeStats(0.0, 0), 0.0, null, null)
+        )
+
+    val statsExtras: StateFlow<StatsExtras> = combine(_insightPeriod, tick) { period, _ -> period to rangeFor(period) }
+        .distinctUntilChanged()
+        .flatMapLatest { (period, r) ->
+            val byMonth = period == InsightPeriod.YEAR
+            val buckets = if (byMonth) {
+                dao.observeMonthTotals(r.start, r.end)
+            } else {
+                dao.observeDayTotals("", null, null, r.start, r.end)
+            }
+            combine(
+                buckets,
+                dao.observeAccountTotals(r.start, r.end),
+                dao.observeUntagged(r.start, r.end),
+                dao.observeSpendDays(r.start, r.end)
+            ) { b, accounts, untagged, spendDays ->
+                StatsExtras(r, byMonth, b, accounts, untagged, spendDays)
+            }
+        }
+        .asState(
+            StatsExtras(rangeFor(InsightPeriod.MONTH), false, emptyList(), emptyList(), UntaggedCounts(0, 0), 0)
         )
 
     val categories = dao.observeCategories().asState(emptyList())

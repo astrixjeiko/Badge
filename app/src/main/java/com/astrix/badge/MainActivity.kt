@@ -10,6 +10,8 @@ import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
@@ -64,12 +66,14 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
     val selection = remember { SelectionState() }
     val accounts by vm.accounts.collectAsState()
     var showSetAccount by remember { mutableStateOf(false) }
+    var showStats by rememberSaveable { mutableStateOf(false) }
 
     val lastCount = remember { mutableIntStateOf(0) }
     if (selection.count > 0) lastCount.intValue = selection.count
 
     LaunchedEffect(tab) { selection.clear() }
     BackHandler(enabled = selection.active) { selection.clear() }
+    BackHandler(enabled = showStats) { showStats = false }
 
     val showUndo: (String, () -> Unit) -> Unit = { message, onUndo ->
         scope.launch {
@@ -187,7 +191,7 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
                         tabs.forEachIndexed { i, (label, icon) ->
                             NavigationBarItem(
                                 selected = tab == i,
-                                onClick = { tab = i },
+                                onClick = { tab = i; showStats = false },
                                 icon = { Icon(icon, contentDescription = label) },
                                 label = { Text(label) },
                                 modifier = if (label == "History") {
@@ -202,7 +206,12 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
             ) { padding ->
                 Box(Modifier.padding(padding)) {
                     when (tab) {
-                        0 -> DashboardScreen(vm, onSeeAll = { tab = 1 }, onDelete = deleteWithUndo)
+                        0 -> DashboardScreen(
+                            vm,
+                            onSeeAll = { tab = 1 },
+                            onOpenStats = { showStats = true },
+                            onDelete = deleteWithUndo
+                        )
                         1 -> HistoryScreen(vm, onDelete = deleteWithUndo)
                         2 -> PlanScreen(
                             vm,
@@ -214,6 +223,22 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
                             onDeleteCategory = deleteCategoryWithUndo,
                             onDeleteAccount = deleteAccountWithUndo,
                             onDeleteButton = deleteButtonWithUndo
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = showStats,
+                        modifier = Modifier.fillMaxSize(),
+                        enter = slideInHorizontally(tween(300)) { it / 4 } + fadeIn(tween(300)),
+                        exit = slideOutHorizontally(tween(250)) { it / 4 } + fadeOut(tween(200))
+                    ) {
+                        StatisticsScreen(
+                            vm = vm,
+                            onBack = { showStats = false },
+                            onOpenHistory = {
+                                showStats = false
+                                tab = 1
+                            }
                         )
                     }
                 }
