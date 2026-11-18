@@ -69,6 +69,9 @@ data class Budget(
 )
 
 data class DayTotal(val day: String, val total: Double)
+data class CategoryTotal(val categoryId: Long?, val total: Double)
+data class RangeStats(val total: Double, val expenseCount: Int)
+data class WeekdayTotal(val weekday: Int, val total: Double)
 
 data class SpendWindow(val total: Double, val firstTimestamp: Long?)
 
@@ -210,6 +213,32 @@ interface BadgeDao {
 
     @Query("SELECT * FROM recurring WHERE id = :id")
     suspend fun getRecurringById(id: Long): Recurring?
+
+    // Insights
+    @Query(
+        "SELECT categoryId AS categoryId, SUM(amount) AS total FROM expenses " +
+                "WHERE timestamp >= :start AND timestamp < :end GROUP BY categoryId ORDER BY total DESC"
+    )
+    fun observeCategoryTotals(start: Long, end: Long): Flow<List<CategoryTotal>>
+
+    @Query(
+        "SELECT COALESCE(SUM(amount), 0.0) AS total, COUNT(*) AS expenseCount FROM expenses " +
+                "WHERE timestamp >= :start AND timestamp < :end"
+    )
+    fun observeRangeStats(start: Long, end: Long): Flow<RangeStats>
+
+    @Query(
+        "SELECT * FROM expenses WHERE timestamp >= :start AND timestamp < :end " +
+                "ORDER BY amount DESC LIMIT 1"
+    )
+    fun observeBiggest(start: Long, end: Long): Flow<Expense?>
+
+    @Query(
+        "SELECT CAST(strftime('%w', timestamp / 1000, 'unixepoch', 'localtime') AS INTEGER) AS weekday, " +
+                "SUM(amount) AS total FROM expenses WHERE timestamp >= :start AND timestamp < :end " +
+                "GROUP BY weekday ORDER BY total DESC LIMIT 1"
+    )
+    fun observeTopWeekday(start: Long, end: Long): Flow<WeekdayTotal?>
 }
 
 val MIGRATION_1_2 = object : Migration(1, 2) {

@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.dp
 
 // Targets: parts of the app the tour can spotlight
 enum class TourTarget {
-    SUMMARY, QUICK_ADD, CUSTOM_AMOUNT, NAV_HISTORY, SEARCH, NEW_BUDGET, SETTINGS_CATEGORIES
+    SUMMARY, QUICK_ADD, CUSTOM_AMOUNT, INSIGHTS, NAV_HISTORY, SEARCH, NEW_BUDGET, SETTINGS_CATEGORIES
 }
 
 // Screens report where their targets are; the tour reads them
@@ -76,6 +76,10 @@ private val TOUR_STEPS = listOf(
     TourStep(
         TourTarget.CUSTOM_AMOUNT, 0, "Custom amount",
         "For anything else, pick a category, give it a name, and type the amount. The keyboard only accepts numbers."
+    ),
+    TourStep(
+        TourTarget.INSIGHTS, 0, "Insights",
+        "See where your money goes. Switch between this week, this month, last month, and this year, and tap a category to see its expenses in History."
     ),
     TourStep(
         TourTarget.NAV_HISTORY, 1, "History",

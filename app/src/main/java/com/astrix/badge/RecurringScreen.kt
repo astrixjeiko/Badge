@@ -288,6 +288,7 @@ fun RecurringDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.clearFocusOnTap(),
         title = { Text(title) },
         text = {
             Column(

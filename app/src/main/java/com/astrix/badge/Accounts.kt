@@ -189,6 +189,7 @@ fun EditAccountDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.clearFocusOnTap(),
         title = { Text("Edit account") },
         text = {
             Row(verticalAlignment = Alignment.Bottom) {

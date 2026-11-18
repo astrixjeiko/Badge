@@ -39,6 +39,8 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
     val quick by vm.quickButtons.collectAsState()
     val accounts by vm.accounts.collectAsState()
     val due by vm.dueRecurring.collectAsState()
+    val insights by vm.insights.collectAsState()
+    val insightPeriod by vm.insightPeriod.collectAsState()
     val dueOffset = if (due.isNotEmpty()) 1 else 0
     var account by remember { mutableStateOf(vm.lastAccountId()) }
     val chosenAccount = account?.takeIf { id -> accounts.any { it.id == id } }
@@ -76,6 +78,7 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
             TourTarget.SUMMARY -> listState.animateScrollToItem(0)
             TourTarget.QUICK_ADD -> listState.animateScrollToItem(1 + dueOffset)
             TourTarget.CUSTOM_AMOUNT -> listState.animateScrollToItem(2 + dueOffset)
+            TourTarget.INSIGHTS -> listState.animateScrollToItem(3 + dueOffset)
             else -> Unit
         }
     }
@@ -184,6 +187,32 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
                         }) { Text("Add") }
                     }
                 }
+            }
+        }
+
+        // Insights
+        item(key = "insights") {
+            Section {
+                InsightsSection(
+                    period = insightPeriod,
+                    state = insights,
+                    categories = categories,
+                    tour = tour,
+                    onPeriod = { vm.setInsightPeriod(it) },
+                    onCategoryClick = { categoryId ->
+                        // Opens History filtered to this category and this period
+                        vm.updateFilter {
+                            HistoryFilter(
+                                sort = it.sort,
+                                categoryId = categoryId,
+                                range = DateRange.CUSTOM,
+                                customFrom = insights.range.start,
+                                customTo = insights.range.end
+                            )
+                        }
+                        onSeeAll()
+                    }
+                )
             }
         }
 

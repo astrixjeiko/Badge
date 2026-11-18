@@ -162,6 +162,7 @@ fun BudgetDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.clearFocusOnTap(),
         title = { Text(title) },
         text = {
             Column(

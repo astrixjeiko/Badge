@@ -237,7 +237,7 @@ private fun AnimationToggle() {
         Column(Modifier.weight(1f)) {
             Text("Animations", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Liquid effect on the Home card, which also reacts to tilting your phone",
+                "Liquid card and animated insights on Home.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

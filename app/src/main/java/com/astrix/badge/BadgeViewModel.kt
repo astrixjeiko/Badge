@@ -52,6 +52,30 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
     val weekTotal = totalFor("WEEK")
     val monthTotal = totalFor("MONTH")
 
+    // --- Insights on Home ---
+
+    private val _insightPeriod = MutableStateFlow(InsightPeriod.MONTH)
+    val insightPeriod: StateFlow<InsightPeriod> = _insightPeriod
+
+    fun setInsightPeriod(period: InsightPeriod) { _insightPeriod.value = period }
+
+    val insights: StateFlow<InsightsState> = combine(_insightPeriod, tick) { period, _ -> rangeFor(period) }
+        .distinctUntilChanged()
+        .flatMapLatest { r ->
+            combine(
+                dao.observeCategoryTotals(r.start, r.end),
+                dao.observeRangeStats(r.start, r.end),
+                dao.observeRangeStats(r.prevStart, r.prevEnd),
+                dao.observeBiggest(r.start, r.end),
+                dao.observeTopWeekday(r.start, r.end)
+            ) { categories, stats, prev, biggest, weekday ->
+                InsightsState(r, categories, stats, prev.total, biggest, weekday)
+            }
+        }
+        .asState(
+            InsightsState(rangeFor(InsightPeriod.MONTH), emptyList(), RangeStats(0.0, 0), 0.0, null, null)
+        )
+
     val categories = dao.observeCategories().asState(emptyList())
     val accounts = dao.observeAccounts().asState(emptyList())
 

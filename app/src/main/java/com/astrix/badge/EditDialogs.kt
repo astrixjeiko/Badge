@@ -29,6 +29,7 @@ fun EditCategoryDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.clearFocusOnTap(),
         title = { Text("Edit category") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -80,6 +81,7 @@ fun EditQuickButtonDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.clearFocusOnTap(),
         title = { Text("Edit quick button") },
         text = {
             Column(
@@ -136,6 +138,7 @@ fun EditExpenseDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.clearFocusOnTap(),
         title = { Text("Edit expense") },
         text = {
             Column(

@@ -164,7 +164,7 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
         LocalTourTargets provides tourTargets,
         LocalSelection provides selection
     ) {
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().clearFocusOnTap()) {
             Scaffold(
                 topBar = {
                     AnimatedVisibility(

@@ -36,6 +36,7 @@ class QuickAddActivity : ComponentActivity() {
 
                 AlertDialog(
                     onDismissRequest = { finishAndRemoveTask() },
+                    modifier = Modifier.clearFocusOnTap(),
                     title = { Text("Add expense") },
                     text = {
                         Column(
