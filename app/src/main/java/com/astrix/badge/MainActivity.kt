@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         CurrencyStore.load(this)
         AnimationStore.load(this)
+        scheduleRecurringChecks(this)
         setContent { BadgeTheme { BadgeApp() } }
     }
 
@@ -105,6 +106,11 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
     val deleteAccountWithUndo: (Account) -> Unit = { a ->
         vm.deleteAccount(a)
         showUndo("Account deleted") { vm.restoreAccount(a) }
+    }
+
+    val deleteRecurringWithUndo: (Recurring) -> Unit = { r ->
+        vm.deleteRecurring(r)
+        showUndo("Recurring expense deleted") { vm.restoreRecurring(r) }
     }
 
     val deleteSelected: () -> Unit = {
@@ -198,7 +204,11 @@ fun BadgeApp(vm: BadgeViewModel = viewModel()) {
                     when (tab) {
                         0 -> DashboardScreen(vm, onSeeAll = { tab = 1 }, onDelete = deleteWithUndo)
                         1 -> HistoryScreen(vm, onDelete = deleteWithUndo)
-                        2 -> BudgetScreen(vm, onDelete = deleteBudgetWithUndo)
+                        2 -> PlanScreen(
+                            vm,
+                            onDeleteBudget = deleteBudgetWithUndo,
+                            onDeleteRecurring = deleteRecurringWithUndo
+                        )
                         else -> SettingsScreen(
                             vm,
                             onDeleteCategory = deleteCategoryWithUndo,

@@ -38,6 +38,8 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
     val categories by vm.categories.collectAsState()
     val quick by vm.quickButtons.collectAsState()
     val accounts by vm.accounts.collectAsState()
+    val due by vm.dueRecurring.collectAsState()
+    val dueOffset = if (due.isNotEmpty()) 1 else 0
     var account by remember { mutableStateOf(vm.lastAccountId()) }
     val chosenAccount = account?.takeIf { id -> accounts.any { it.id == id } }
     val reference by vm.dailyReference.collectAsState()
@@ -72,8 +74,8 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
     LaunchedEffect(tour.active) {
         when (tour.active) {
             TourTarget.SUMMARY -> listState.animateScrollToItem(0)
-            TourTarget.QUICK_ADD -> listState.animateScrollToItem(1)
-            TourTarget.CUSTOM_AMOUNT -> listState.animateScrollToItem(2)
+            TourTarget.QUICK_ADD -> listState.animateScrollToItem(1 + dueOffset)
+            TourTarget.CUSTOM_AMOUNT -> listState.animateScrollToItem(2 + dueOffset)
             else -> Unit
         }
     }
@@ -111,6 +113,19 @@ fun DashboardScreen(vm: BadgeViewModel, onSeeAll: () -> Unit, onDelete: (Expense
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Recurring expenses that are due
+        if (due.isNotEmpty()) {
+            item(key = "due") {
+                Section {
+                    DueSection(
+                        due = due,
+                        onAdd = { vm.confirmRecurring(it) },
+                        onSkip = { vm.skipRecurring(it) }
+                    )
                 }
             }
         }

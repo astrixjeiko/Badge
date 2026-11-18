@@ -1,6 +1,7 @@
 package com.astrix.badge
 
 import android.app.Application
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -36,6 +37,7 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
 
     private val tick = MutableStateFlow(0)
     fun refreshPeriods() { tick.value += 1 }
+    val resumes: StateFlow<Int> = tick
 
     private val _restored = MutableSharedFlow<Long>(extraBufferCapacity = 1)
     val restored: SharedFlow<Long> = _restored
@@ -52,6 +54,14 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
 
     val categories = dao.observeCategories().asState(emptyList())
     val accounts = dao.observeAccounts().asState(emptyList())
+
+    val recurring = dao.observeRecurring().asState(emptyList())
+
+    val dueRecurring: StateFlow<List<Recurring>> = combine(recurring, tick) { list, _ ->
+        val now = System.currentTimeMillis()
+        list.filter { it.enabled && it.nextDue <= now }
+    }.asState(emptyList())
+
     val quickButtons = dao.observeQuickButtons().asState(emptyList())
     val budgets = dao.observeBudgets().asState(emptyList())
 
@@ -301,5 +311,48 @@ class BadgeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun restoreAccounts(list: List<Expense>) = viewModelScope.launch {
         dao.updateExpenses(list)
+    }
+
+    fun addRecurring(
+        name: String,
+        amount: Double,
+        day: Int,
+        categoryId: Long?,
+        accountId: Long?
+    ) = viewModelScope.launch {
+        dao.insertRecurring(
+            Recurring(
+                name = name, amount = amount, categoryId = categoryId, accountId = accountId,
+                dayOfMonth = day, nextDue = firstDueFrom(day, System.currentTimeMillis())
+            )
+        )
+    }
+
+    fun updateRecurring(r: Recurring) = viewModelScope.launch {
+        val old = dao.getRecurringById(r.id)
+        // A new day, or switching it back on, starts counting from today
+        val restart = old == null || old.dayOfMonth != r.dayOfMonth || (!old.enabled && r.enabled)
+        dao.updateRecurring(
+            if (restart) {
+                r.copy(nextDue = firstDueFrom(r.dayOfMonth, System.currentTimeMillis()), notifiedFor = 0L)
+            } else {
+                r
+            }
+        )
+    }
+
+    fun deleteRecurring(r: Recurring) = viewModelScope.launch {
+        dao.deleteRecurring(r)
+        NotificationManagerCompat.from(getApplication()).cancel(r.id.toInt())
+    }
+
+    fun restoreRecurring(r: Recurring) = viewModelScope.launch { dao.insertRecurring(r) }
+
+    fun confirmRecurring(r: Recurring) = viewModelScope.launch {
+        confirmDueRecurring(getApplication(), r.id)
+    }
+
+    fun skipRecurring(r: Recurring) = viewModelScope.launch {
+        skipDueRecurring(getApplication(), r.id)
     }
 }

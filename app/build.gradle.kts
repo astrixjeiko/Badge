@@ -16,8 +16,8 @@ android {
         applicationId = "com.astrix.badge"
         minSdk = 26
         targetSdk = 37
-        versionCode = 7
-        versionName = "1.6.0"
+        versionCode = 8
+        versionName = "1.7.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -58,6 +58,7 @@ dependencies {
     implementation(libs.androidx.paging.compose)
     implementation(libs.androidx.room.paging)
     implementation(libs.androidx.emoji2.emojipicker)
+    implementation(libs.androidx.work.runtime.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

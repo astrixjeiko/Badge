@@ -23,6 +23,19 @@ data class Account(
     @ColumnInfo(defaultValue = "0") val position: Int = 0
 )
 
+@Entity(tableName = "recurring")
+data class Recurring(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val amount: Double,
+    val categoryId: Long?,
+    val accountId: Long?,
+    val dayOfMonth: Int,
+    val nextDue: Long,
+    val enabled: Boolean = true,
+    val notifiedFor: Long = 0L
+)
+
 @Entity(
     tableName = "expenses",
     indices = [Index("timestamp"), Index("categoryId"), Index("accountId")]
@@ -183,6 +196,20 @@ interface BadgeDao {
 
     @Query("SELECT * FROM budgets")
     fun observeBudgets(): Flow<List<Budget>>
+
+    // Recurring expenses
+    @Insert suspend fun insertRecurring(r: Recurring): Long
+    @Update suspend fun updateRecurring(r: Recurring)
+    @Delete suspend fun deleteRecurring(r: Recurring)
+
+    @Query("SELECT * FROM recurring ORDER BY nextDue, id")
+    fun observeRecurring(): Flow<List<Recurring>>
+
+    @Query("SELECT * FROM recurring")
+    suspend fun getRecurring(): List<Recurring>
+
+    @Query("SELECT * FROM recurring WHERE id = :id")
+    suspend fun getRecurringById(id: Long): Recurring?
 }
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -233,9 +260,26 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS recurring (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "name TEXT NOT NULL, " +
+                    "amount REAL NOT NULL, " +
+                    "categoryId INTEGER, " +
+                    "accountId INTEGER, " +
+                    "dayOfMonth INTEGER NOT NULL, " +
+                    "nextDue INTEGER NOT NULL, " +
+                    "enabled INTEGER NOT NULL, " +
+                    "notifiedFor INTEGER NOT NULL)"
+        )
+    }
+}
+
 @Database(
-    entities = [Expense::class, Category::class, QuickButton::class, Budget::class, Account::class],
-    version = 6,
+    entities = [Expense::class, Category::class, QuickButton::class, Budget::class, Account::class, Recurring::class],
+    version = 7,
     exportSchema = false
 )
 abstract class BadgeDatabase : RoomDatabase() {
@@ -247,7 +291,7 @@ abstract class BadgeDatabase : RoomDatabase() {
             INSTANCE ?: Room.databaseBuilder(
                 context.applicationContext, BadgeDatabase::class.java, "badge.db"
             ).addMigrations(
-                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6
+                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7
             ).build().also { INSTANCE = it }
         }
     }
