@@ -62,16 +62,16 @@ class QuickAddActivity : ComponentActivity() {
                             val a = text.toDoubleOrNull()
                             if (a != null && a > 0) {
                                 lifecycleScope.launch {
-                                    dao.insertExpense(
-                                        Expense(
-                                            amount = a,
-                                            categoryId = cat,
-                                            note = note.trim(),
-                                            accountId = chosenAccount
-                                        )
+                                    val expense = Expense(
+                                        amount = a,
+                                        categoryId = cat,
+                                        note = note.trim(),
+                                        accountId = chosenAccount
                                     )
+                                    dao.insertExpense(expense)
                                     prefs.edit { putLong("last_account", chosenAccount ?: -1L) }
                                     refreshAllWidgets(applicationContext)
+                                    notifyIfOverBudget(applicationContext, expense)
                                     finishAndRemoveTask()
                                 }
                             }

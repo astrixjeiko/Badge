@@ -1,5 +1,6 @@
 package com.astrix.badge
 
+import android.content.Context
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.edit
 
 private fun groupOf(key: Any): String? {
     val k = key.toString()
@@ -104,6 +107,8 @@ fun SettingsScreen(
         item(key = "currency") { CurrencyPicker() }
         item(key = "gap-anim") { Spacer(Modifier.height(8.dp)) }
         item(key = "animations") { AnimationToggle() }
+        item(key = "gap-alerts") { Spacer(Modifier.height(8.dp)) }
+        item(key = "alerts") { BudgetAlertsToggle(vm) }
         item(key = "gap-1") { Spacer(Modifier.height(16.dp)) }
 
         // Categories
@@ -447,6 +452,54 @@ private fun AddQuickButtonForm(
                     amount = ""
                 }
             }) { Text("Add quick button") }
+        }
+    }
+}
+
+@Composable
+private fun BudgetAlertsToggle(vm: BadgeViewModel) {
+    val context = LocalContext.current
+    val resumes by vm.resumes.collectAsState()
+    val prefs = remember { context.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE) }
+    var enabled by remember { mutableStateOf(prefs.getBoolean("budget_alerts", true)) }
+
+    val notificationsOn = remember(resumes) {
+        NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+    val turnOn = rememberNotificationEnabler { vm.refreshPeriods() }
+
+    Column {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Budget alerts", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Get a notification when an expense you add from the widget puts you over a budget",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(
+                checked = enabled,
+                onCheckedChange = { checked ->
+                    enabled = checked
+                    prefs.edit { putBoolean("budget_alerts", checked) }
+                    if (checked && !notificationsOn) turnOn()
+                }
+            )
+        }
+        if (enabled && !notificationsOn) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Notifications are off for Badge, so alerts can't appear.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+            TextButton(onClick = turnOn) { Text("Turn on notifications") }
         }
     }
 }

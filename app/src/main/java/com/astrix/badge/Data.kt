@@ -267,6 +267,19 @@ interface BadgeDao {
                 "FROM expenses WHERE timestamp >= :start AND timestamp < :end"
     )
     fun observeSpendDays(start: Long, end: Long): Flow<Int>
+
+    // Budget alerts
+    @Query("SELECT * FROM budgets")
+    suspend fun getBudgets(): List<Budget>
+
+    @Query(
+        "SELECT COALESCE(SUM(amount), 0.0) FROM expenses " +
+                "WHERE timestamp >= :start AND (:categoryId IS NULL OR categoryId = :categoryId)"
+    )
+    suspend fun getSpent(start: Long, categoryId: Long?): Double
+
+    @Query("SELECT * FROM categories WHERE id = :id")
+    suspend fun getCategoryById(id: Long): Category?
 }
 
 val MIGRATION_1_2 = object : Migration(1, 2) {

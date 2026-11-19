@@ -47,7 +47,8 @@ class MainActivity : ComponentActivity() {
         CurrencyStore.load(this)
         AnimationStore.load(this)
         scheduleRecurringChecks(this)
-        setContent { BadgeTheme { BadgeApp() } }
+        val startTab = intent.getIntExtra(BudgetAlerts.EXTRA_OPEN_TAB, 0).coerceIn(0, 3)
+        setContent { BadgeTheme { BadgeApp(startTab = startTab) } }
     }
 
     override fun onResume() {
@@ -57,8 +58,8 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun BadgeApp(vm: BadgeViewModel = viewModel()) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+fun BadgeApp(startTab: Int = 0, vm: BadgeViewModel = viewModel()) {
+    var tab by rememberSaveable { mutableIntStateOf(startTab) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val showTour by vm.showTour.collectAsState()

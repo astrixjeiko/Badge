@@ -289,10 +289,12 @@ class ConfirmAction : ActionCallback {
             return
         }
 
-        dao.insertExpense(
-            Expense(amount = b.amount, categoryId = b.categoryId, note = b.label, accountId = b.accountId)
+        val expense = Expense(
+            amount = b.amount, categoryId = b.categoryId, note = b.label, accountId = b.accountId
         )
+        dao.insertExpense(expense)
         BadgeMiniWidget().updateAll(context)
+        notifyIfOverBudget(context, expense)
 
         val stamp = System.currentTimeMillis()
         updateAppWidgetState(context, glanceId) { prefs ->

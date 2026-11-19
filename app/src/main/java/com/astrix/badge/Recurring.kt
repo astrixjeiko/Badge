@@ -64,22 +64,22 @@ fun ordinal(n: Int): String {
     return n.toString() + suffix
 }
 
-suspend fun confirmDueRecurring(context: Context, id: Long) {
+suspend fun confirmDueRecurring(context: Context, id: Long, alertBudgets: Boolean = false) {
     val dao = BadgeDatabase.get(context).dao()
     val r = dao.getRecurringById(id) ?: return
     if (r.nextDue > System.currentTimeMillis()) return
-    dao.insertExpense(
-        Expense(
-            amount = r.amount,
-            categoryId = r.categoryId,
-            note = r.name,
-            timestamp = r.nextDue,
-            accountId = r.accountId
-        )
+    val expense = Expense(
+        amount = r.amount,
+        categoryId = r.categoryId,
+        note = r.name,
+        timestamp = r.nextDue,
+        accountId = r.accountId
     )
+    dao.insertExpense(expense)
     dao.updateRecurring(r.copy(nextDue = dueAfter(r.dayOfMonth, r.nextDue)))
     NotificationManagerCompat.from(context).cancel(r.id.toInt())
     refreshAllWidgets(context)
+    if (alertBudgets) notifyIfOverBudget(context, expense)
 }
 
 suspend fun skipDueRecurring(context: Context, id: Long) {
@@ -159,7 +159,7 @@ class RecurringActionReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 when (action) {
-                    RecurringNotifications.ACTION_ADD -> confirmDueRecurring(context, id)
+                    RecurringNotifications.ACTION_ADD -> confirmDueRecurring(context, id, alertBudgets = true)
                     RecurringNotifications.ACTION_SKIP -> skipDueRecurring(context, id)
                 }
             } finally {
