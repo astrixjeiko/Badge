@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         CurrencyStore.load(this)
         AnimationStore.load(this)
+        GoogleAccountStore.load(this)
         scheduleRecurringChecks(this)
         val startTab = intent.getIntExtra(BudgetAlerts.EXTRA_OPEN_TAB, 0).coerceIn(0, 3)
         setContent { BadgeTheme { BadgeApp(startTab = startTab) } }

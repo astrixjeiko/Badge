@@ -1,23 +1,29 @@
 package com.astrix.badge
 
 import android.content.Context
+import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.edit
+import kotlinx.coroutines.launch
 
 private fun groupOf(key: Any): String? {
     val k = key.toString()
@@ -109,6 +115,11 @@ fun SettingsScreen(
         item(key = "animations") { AnimationToggle() }
         item(key = "gap-alerts") { Spacer(Modifier.height(8.dp)) }
         item(key = "alerts") { BudgetAlertsToggle(vm) }
+        item(key = "gap-google") { Spacer(Modifier.height(16.dp)) }
+        item(key = "google-title") {
+            Text("Google account", style = MaterialTheme.typography.titleLarge)
+        }
+        item(key = "google") { GoogleAccountCard() }
         item(key = "gap-1") { Spacer(Modifier.height(16.dp)) }
 
         // Categories
@@ -500,6 +511,94 @@ private fun BudgetAlertsToggle(vm: BadgeViewModel) {
                 color = MaterialTheme.colorScheme.error
             )
             TextButton(onClick = turnOn) { Text("Turn on notifications") }
+        }
+    }
+}
+
+@Composable
+private fun GoogleAccountCard() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val account = GoogleAccountStore.account
+    var busy by remember { mutableStateOf(false) }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            if (account == null) {
+                Text("Link your Google account", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Linking lets Badge back up your data to your own Google account in a coming update. Nothing is uploaded yet, and your expenses stay on this phone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    enabled = !busy,
+                    onClick = {
+                        busy = true
+                        scope.launch {
+                            val result = linkGoogleAccount(context)
+                            result.onSuccess { GoogleAccountStore.save(context, it) }
+                            result.onFailure { error ->
+                                googleErrorMessage(error)?.let {
+                                    Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            busy = false
+                        }
+                    }
+                ) { Text(if (busy) "Linking…" else "Link Google account") }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            account.name.ifBlank { account.email }.take(1).uppercase(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            account.name.ifBlank { "Google account" },
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            account.email,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    enabled = !busy,
+                    onClick = {
+                        scope.launch {
+                            busy = true
+                            unlinkGoogleAccount(context)
+                            busy = false
+                        }
+                    }
+                ) { Text("Unlink") }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Unlinking doesn't delete anything on this phone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
