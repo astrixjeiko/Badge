@@ -23,6 +23,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.edit
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 private fun groupOf(key: Any): String? {
@@ -515,81 +517,168 @@ private fun BudgetAlertsToggle(vm: BadgeViewModel) {
 
 @Composable
 private fun GoogleAccountCard() {
+    val account = GoogleAccountStore.account
+    if (account == null) LinkGoogleButton() else LinkedAccountCard(account)
+}
+
+@Composable
+private fun LinkGoogleButton() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val account = GoogleAccountStore.account
     var busy by remember { mutableStateOf(false) }
 
-    if (account == null) {
-        GoogleSignInButton(
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !busy,
-            onClick = {
-                busy = true
-                scope.launch {
-                    val result = linkGoogleAccount(context)
-                    result.onSuccess { GoogleAccountStore.save(context, it) }
-                    result.onFailure { error ->
-                        googleErrorMessage(error)?.let {
-                            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-                        }
+    GoogleSignInButton(
+        modifier = Modifier.fillMaxWidth(),
+        enabled = !busy,
+        onClick = {
+            busy = true
+            scope.launch {
+                val result = linkGoogleAccount(context)
+                result.onSuccess { GoogleAccountStore.save(context, it) }
+                result.onFailure { error ->
+                    googleErrorMessage(error)?.let {
+                        Toast.makeText(context, it, Toast.LENGTH_LONG).show()
                     }
-                    busy = false
+                }
+                busy = false
+            }
+        }
+    )
+}
+
+private class RestoreOffer(val token: String, val remote: DriveBackup.RemoteBackup)
+
+@Composable
+private fun LinkedAccountCard(account: LinkedAccount) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var lastBackup by remember { mutableLongStateOf(lastBackupTime(context)) }
+    var offer by remember { mutableStateOf<RestoreOffer?>(null) }
+
+    fun say(message: String) = Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+    val runDrive = rememberDriveRunner(account.email, onBusy = { busy = it }, onError = { say(it) })
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        account.name.ifBlank { account.email }.take(1).uppercase(),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        account.name.ifBlank { "Google account" },
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        account.email,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
-        )
-    } else {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            account.name.ifBlank { account.email }.take(1).uppercase(),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        runDrive { token ->
+                            val json = exportBackupJson(context)
+                            val previous = DriveBackup.find(token)
+                            DriveBackup.upload(token, json)
+                            if (previous != null) DriveBackup.delete(token, previous.id)
+                            saveLastBackupTime(context, System.currentTimeMillis())
+                            lastBackup = lastBackupTime(context)
+                            say("Backed up to your Google Drive")
+                        }
                     }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            account.name.ifBlank { "Google account" },
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            account.email,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
+                ) { Text("Back up now") }
                 OutlinedButton(
                     enabled = !busy,
+                    modifier = Modifier.weight(1f),
                     onClick = {
-                        scope.launch {
-                            busy = true
-                            unlinkGoogleAccount(context)
+                        runDrive { token ->
+                            val remote = DriveBackup.find(token)
+                            if (remote == null) say("No backup found in your Google Drive yet.")
+                            else offer = RestoreOffer(token, remote)
+                        }
+                    }
+                ) { Text("Restore") }
+            }
+
+            if (busy) {
+                Spacer(Modifier.height(8.dp))
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (lastBackup > 0) "Last backup from this phone: " + formatBackupTime(lastBackup)
+                else "No backup made from this phone yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(Modifier.height(8.dp))
+            TextButton(
+                enabled = !busy,
+                onClick = { scope.launch { unlinkGoogleAccount(context) } }
+            ) { Text("Unlink") }
+            Text(
+                "Unlinking doesn't delete anything on this phone or in your Google Drive.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+
+    offer?.let { o ->
+        AlertDialog(
+            onDismissRequest = { offer = null },
+            title = { Text("Restore backup?") },
+            text = {
+                Text(
+                    "This replaces everything on this phone with your backup from " +
+                            formatBackupTime(parseDriveTime(o.remote.modifiedTime)) + ". It can't be undone."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    offer = null
+                    scope.launch {
+                        busy = true
+                        try {
+                            val json = DriveBackup.download(o.token, o.remote.id)
+                            restoreFromJson(context, json)
+                            say("Backup restored")
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.e("BadgeBackup", "Restore failed", e)
+                            say(driveErrorMessage(e))
+                        } finally {
                             busy = false
                         }
                     }
-                ) { Text("Unlink") }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Unlinking doesn't delete anything on this phone.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+                }) { Text("Restore") }
+            },
+            dismissButton = { TextButton(onClick = { offer = null }) { Text("Cancel") } }
+        )
     }
 }

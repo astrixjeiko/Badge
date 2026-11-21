@@ -280,6 +280,23 @@ interface BadgeDao {
 
     @Query("SELECT * FROM categories WHERE id = :id")
     suspend fun getCategoryById(id: Long): Category?
+
+    // Backup and restore
+    @Query("SELECT * FROM expenses") suspend fun allExpenses(): List<Expense>
+    @Query("SELECT * FROM categories") suspend fun allCategories(): List<Category>
+    @Query("SELECT * FROM accounts") suspend fun allAccounts(): List<Account>
+
+    @Insert suspend fun insertCategories(list: List<Category>)
+    @Insert suspend fun insertAccounts(list: List<Account>)
+    @Insert suspend fun insertQuickButtons(list: List<QuickButton>)
+    @Insert suspend fun insertRecurringList(list: List<Recurring>)
+
+    @Query("DELETE FROM expenses") suspend fun deleteAllExpenses()
+    @Query("DELETE FROM categories") suspend fun deleteAllCategories()
+    @Query("DELETE FROM accounts") suspend fun deleteAllAccounts()
+    @Query("DELETE FROM quick_buttons") suspend fun deleteAllQuickButtons()
+    @Query("DELETE FROM budgets") suspend fun deleteAllBudgets()
+    @Query("DELETE FROM recurring") suspend fun deleteAllRecurring()
 }
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
