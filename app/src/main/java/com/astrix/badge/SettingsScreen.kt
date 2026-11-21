@@ -115,11 +115,6 @@ fun SettingsScreen(
         item(key = "animations") { AnimationToggle() }
         item(key = "gap-alerts") { Spacer(Modifier.height(8.dp)) }
         item(key = "alerts") { BudgetAlertsToggle(vm) }
-        item(key = "gap-google") { Spacer(Modifier.height(16.dp)) }
-        item(key = "google-title") {
-            Text("Google account", style = MaterialTheme.typography.titleLarge)
-        }
-        item(key = "google") { GoogleAccountCard() }
         item(key = "gap-1") { Spacer(Modifier.height(16.dp)) }
 
         // Categories
@@ -191,8 +186,11 @@ fun SettingsScreen(
                 onAdd = { label, amount, cat, acc -> vm.addQuickButton(label, amount, cat, acc) }
             )
         }
-        item(key = "tutorial") {
+        item(key = "google") {
             Spacer(Modifier.height(8.dp))
+            GoogleAccountCard()
+        }
+        item(key = "tutorial") {
             OutlinedButton(
                 onClick = { vm.startTour() },
                 modifier = Modifier.fillMaxWidth()
@@ -522,34 +520,27 @@ private fun GoogleAccountCard() {
     val account = GoogleAccountStore.account
     var busy by remember { mutableStateOf(false) }
 
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            if (account == null) {
-                Text("Link your Google account", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Linking lets Badge back up your data to your own Google account in a coming update. Nothing is uploaded yet, and your expenses stay on this phone.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(12.dp))
-                Button(
-                    enabled = !busy,
-                    onClick = {
-                        busy = true
-                        scope.launch {
-                            val result = linkGoogleAccount(context)
-                            result.onSuccess { GoogleAccountStore.save(context, it) }
-                            result.onFailure { error ->
-                                googleErrorMessage(error)?.let {
-                                    Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-                                }
-                            }
-                            busy = false
+    if (account == null) {
+        GoogleSignInButton(
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !busy,
+            onClick = {
+                busy = true
+                scope.launch {
+                    val result = linkGoogleAccount(context)
+                    result.onSuccess { GoogleAccountStore.save(context, it) }
+                    result.onFailure { error ->
+                        googleErrorMessage(error)?.let {
+                            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
                         }
                     }
-                ) { Text(if (busy) "Linking…" else "Link Google account") }
-            } else {
+                    busy = false
+                }
+            }
+        )
+    } else {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         Modifier
