@@ -3,6 +3,8 @@ package com.astrix.badge
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,15 +12,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
@@ -553,28 +562,27 @@ private fun LinkedAccountCard(account: LinkedAccount) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
-    var lastBackup by remember { mutableLongStateOf(lastBackupTime(context)) }
+    var lastBackup by remember(account.email) { mutableLongStateOf(lastBackupTime(context)) }
     var offer by remember { mutableStateOf<RestoreOffer?>(null) }
+    var showAccountMenu by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(16.dp)
+    val initial = account.name.ifBlank { account.email }.take(1).uppercase()
 
     fun say(message: String) = Toast.makeText(context, message, Toast.LENGTH_LONG).show()
     val runDrive = rememberDriveRunner(account.email, onBusy = { busy = it }, onError = { say(it) })
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        account.name.ifBlank { account.email }.take(1).uppercase(),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(shape)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                    .clickable(enabled = !busy, role = Role.Button) { showAccountMenu = true }
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AccountAvatar(initial, 40)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -591,6 +599,11 @@ private fun LinkedAccountCard(account: LinkedAccount) {
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                Icon(
+                    Icons.Default.ArrowDropDown,
+                    contentDescription = "Change account",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Spacer(Modifier.height(12.dp))
@@ -629,23 +642,72 @@ private fun LinkedAccountCard(account: LinkedAccount) {
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                if (lastBackup > 0) "Last backup from this phone: " + formatBackupTime(lastBackup)
-                else "No backup made from this phone yet.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(Modifier.height(8.dp))
-            TextButton(
-                enabled = !busy,
-                onClick = { scope.launch { unlinkGoogleAccount(context) } }
-            ) { Text("Unlink") }
-            Text(
-                "Unlinking doesn't delete anything on this phone or in your Google Drive.",
+                if (lastBackup > 0) "Last backup from this device: " + formatBackupTime(lastBackup)
+                else "No backup made from this device yet.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+
+    // Account menu
+    if (showAccountMenu) {
+        AlertDialog(
+            onDismissRequest = { showAccountMenu = false },
+            title = { Text("Google account") },
+            text = {
+                Column {
+                    AccountMenuRow(
+                        title = account.name.ifBlank { "Google account" },
+                        subtitle = account.email,
+                        leading = { AccountAvatar(initial, 32) },
+                        trailing = {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "Current account",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        onClick = { showAccountMenu = false }
+                    )
+                    AccountMenuRow(
+                        title = "Choose another Google account",
+                        subtitle = null,
+                        leading = { MenuIcon(Icons.Default.Add) },
+                        onClick = {
+                            showAccountMenu = false
+                            scope.launch {
+                                busy = true
+                                val result = linkGoogleAccount(context)
+                                result.onSuccess {
+                                    if (!it.email.equals(account.email, ignoreCase = true)) {
+                                        saveLastBackupTime(context, 0L)
+                                    }
+                                    GoogleAccountStore.save(context, it)
+                                }
+                                result.onFailure { error -> googleErrorMessage(error)?.let { say(it) } }
+                                busy = false
+                            }
+                        }
+                    )
+                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                    AccountMenuRow(
+                        title = "Use guest account",
+                        subtitle = "Unlinks Google. Your data stays on this device and in your Drive.",
+                        leading = { MenuIcon(Icons.Default.Person) },
+                        onClick = {
+                            showAccountMenu = false
+                            scope.launch {
+                                unlinkGoogleAccount(context)
+                                saveLastBackupTime(context, 0L)
+                            }
+                        }
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showAccountMenu = false }) { Text("Cancel") } }
+        )
     }
 
     offer?.let { o ->
@@ -654,7 +716,7 @@ private fun LinkedAccountCard(account: LinkedAccount) {
             title = { Text("Restore backup?") },
             text = {
                 Text(
-                    "This replaces everything on this phone with your backup from " +
+                    "This replaces everything on this device with your backup from " +
                             formatBackupTime(parseDriveTime(o.remote.modifiedTime)) + ". It can't be undone."
                 )
             },
@@ -680,5 +742,67 @@ private fun LinkedAccountCard(account: LinkedAccount) {
             },
             dismissButton = { TextButton(onClick = { offer = null }) { Text("Cancel") } }
         )
+    }
+}
+
+@Composable
+private fun AccountAvatar(label: String, size: Int) {
+    Box(
+        Modifier
+            .size(size.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+    }
+}
+
+@Composable
+private fun MenuIcon(icon: ImageVector) {
+    Box(
+        Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+    }
+}
+
+@Composable
+private fun AccountMenuRow(
+    title: String,
+    subtitle: String?,
+    leading: @Composable () -> Unit,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        leading()
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        trailing?.invoke()
     }
 }

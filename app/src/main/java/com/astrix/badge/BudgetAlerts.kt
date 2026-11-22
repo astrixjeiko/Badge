@@ -103,8 +103,6 @@ suspend fun notifyIfOverBudget(context: Context, expense: Expense) {
     }
 }
 
-// Returns a function that turns notifications on: the first call asks for permission (Android 13+),
-// later calls open the phone's notification settings for Badge
 @Composable
 fun rememberNotificationEnabler(onResult: () -> Unit): () -> Unit {
     val context = LocalContext.current

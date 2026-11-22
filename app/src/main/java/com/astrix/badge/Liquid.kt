@@ -45,7 +45,7 @@ object AnimationStore {
         enabled = if (prefs.contains("animations")) {
             prefs.getBoolean("animations", true)
         } else {
-            // Not chosen yet: start off if the phone's own animations are turned off
+            // Not chosen yet: start off if the device's own animations are turned off
             Settings.Global.getFloat(
                 context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f
             ) != 0f
@@ -59,8 +59,7 @@ object AnimationStore {
     }
 }
 
-// Tilt: the angle of the phone in the screen plane, in radians (0 = upright)
-
+// Tilt: the angle of the device in the screen plane
 private fun Context.findLifecycleOwner(): LifecycleOwner? {
     var c: Context? = this
     while (c is ContextWrapper) {
@@ -89,7 +88,6 @@ private fun rememberTilt(enabled: Boolean): State<Float> {
                 override fun onSensorChanged(event: SensorEvent) {
                     val ax = event.values[0]
                     val ay = event.values[1]
-                    // Turn the phone's axes into the screen's axes (landscape modes too)
                     val sx: Float
                     val sy: Float
                     when (view.display?.rotation) {

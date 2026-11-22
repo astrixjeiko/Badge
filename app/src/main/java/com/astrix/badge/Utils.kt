@@ -54,7 +54,7 @@ object Periods {
     }
 }
 
-// "20.00" style text for editing (always uses a dot, whatever the phone's language)
+// "20.00" style text for editing (always uses a dot, whatever the device's language)
 fun plainAmount(v: Double): String = String.format(Locale.US, "%.2f", v)
 
 fun formatDate(timestamp: Long): String =

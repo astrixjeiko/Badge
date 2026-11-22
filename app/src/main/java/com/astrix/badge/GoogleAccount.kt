@@ -92,8 +92,8 @@ suspend fun unlinkGoogleAccount(context: Context) {
 fun googleErrorMessage(error: Throwable): String? = when (error) {
     is GetCredentialCancellationException -> null
     is NoCredentialException ->
-        "No Google account found on this phone. Add one in the phone's settings and try again."
+        "No Google account found on this device. Add one in the device's settings and try again."
     is GetCredentialProviderConfigurationException ->
-        "Google sign-in isn't available on this phone. Check that Google Play services are installed and up to date."
+        "Google sign-in isn't available on this device. Check that Google Play services are installed and up to date."
     else -> "Couldn't link the account. Please try again."
 }
