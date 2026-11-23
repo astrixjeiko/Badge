@@ -38,6 +38,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 private const val DRIVE_APPDATA_SCOPE = "https://www.googleapis.com/auth/drive.appdata"
+const val DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 
 // Small helpers
 fun lastBackupTime(context: Context): Long =
@@ -133,6 +134,23 @@ object DriveBackup {
         RemoteBackup(response.getString("id"), response.optString("modifiedTime"))
     }
 
+    // Uploads CSV text and lets Google convert it into a Google Sheet; returns its link
+    suspend fun createSheet(token: String, name: String, csv: String): String = withContext(Dispatchers.IO) {
+        val boundary = "badge_" + System.currentTimeMillis()
+        val metadata = JSONObject()
+            .put("name", name)
+            .put("mimeType", "application/vnd.google-apps.spreadsheet")
+            .toString()
+        val body = "--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n$metadata\r\n" +
+                "--$boundary\r\nContent-Type: text/csv; charset=UTF-8\r\n\r\n$csv\r\n--$boundary--"
+        val url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink"
+        val connection = open(url, "POST", token)
+        connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "multipart/related; boundary=$boundary")
+        connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+        JSONObject(connection.readBody()).getString("webViewLink")
+    }
+
     suspend fun download(token: String, id: String): String = withContext(Dispatchers.IO) {
         open("$FILES_URL/$id?alt=media", "GET", token).readBody()
     }
@@ -147,10 +165,14 @@ object DriveBackup {
 }
 
 // Asking Google for permission
-private suspend fun authorizeDrive(context: Context, email: String): AuthorizationResult =
+private suspend fun authorizeDrive(
+    context: Context,
+    email: String,
+    scope: String = DRIVE_APPDATA_SCOPE
+): AuthorizationResult =
     suspendCancellableCoroutine { continuation ->
         val request = AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope(DRIVE_APPDATA_SCOPE)))
+            .setRequestedScopes(listOf(Scope(scope)))
             .setAccount(android.accounts.Account(email, "com.google"))
             .build()
         Identity.getAuthorizationClient(context).authorize(request)
@@ -167,10 +189,11 @@ suspend fun silentDriveToken(context: Context, email: String): String? {
 fun rememberDriveRunner(
     email: String,
     onBusy: (Boolean) -> Unit,
-    onError: (String) -> Unit
+    onError: (String) -> Unit,
+    scope: String = DRIVE_APPDATA_SCOPE
 ): (suspend (String) -> Unit) -> Unit {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val coroutineScope = rememberCoroutineScope()
     var pending by remember { mutableStateOf<(suspend (String) -> Unit)?>(null) }
 
     val launcher = rememberLauncherForActivityResult(
@@ -181,7 +204,7 @@ fun rememberDriveRunner(
         if (action == null) {
             onBusy(false)
         } else {
-            scope.launch {
+            coroutineScope.launch {
                 try {
                     val auth = Identity.getAuthorizationClient(context)
                         .getAuthorizationResultFromIntent(result.data)
@@ -201,10 +224,10 @@ fun rememberDriveRunner(
     }
 
     return { action ->
-        scope.launch {
+        coroutineScope.launch {
             onBusy(true)
             try {
-                val auth = authorizeDrive(context, email)
+                val auth = authorizeDrive(context, email, scope)
                 if (auth.hasResolution()) {
                     // First time: Google shows its permission screen
                     pending = action

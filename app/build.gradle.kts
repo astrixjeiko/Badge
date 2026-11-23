@@ -16,8 +16,8 @@ android {
         applicationId = "com.astrix.badge"
         minSdk = 26
         targetSdk = 37
-        versionCode = 11
-        versionName = "2.0.0"
+        versionCode = 13
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

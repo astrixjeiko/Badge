@@ -355,6 +355,7 @@ fun AutoRestore(email: String, onFinished: (restored: Boolean) -> Unit) {
             } else {
                 val json = DriveBackup.download(token, remote.id)
                 restoreFromJson(context, json)
+                saveLastBackupTime(context, parseDriveTime(remote.modifiedTime))
                 onFinished(true)
             }
         }

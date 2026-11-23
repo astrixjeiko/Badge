@@ -1,7 +1,11 @@
 package com.astrix.badge
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,8 +39,10 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.edit
 import android.util.Log
+import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import androidx.core.net.toUri
 
 private fun groupOf(key: Any): String? {
     val k = key.toString()
@@ -204,7 +210,9 @@ fun SettingsScreen(
         item(key = "google") {
             Spacer(Modifier.height(8.dp))
             GoogleAccountCard()
+            Spacer(Modifier.height(8.dp))
         }
+        item(key = "export") { ExportButton() }
         item(key = "tutorial") {
             OutlinedButton(
                 onClick = { vm.startTour() },
@@ -537,7 +545,7 @@ private fun GoogleAccountCard() {
         if (account == null) {
             LinkGoogleButton(onLinked = { restoreEmail = it })
         } else {
-            LinkedAccountCard(account)
+            key(restoreEmail) { LinkedAccountCard(account) }
         }
         restoreEmail?.let { email ->
             Spacer(Modifier.height(8.dp))
@@ -663,8 +671,8 @@ private fun LinkedAccountCard(account: LinkedAccount) {
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                if (lastBackup > 0) "Last backup from this device: " + formatBackupTime(lastBackup)
-                else "No backup made from this device yet.",
+                if (lastBackup > 0) "Last backup: " + formatBackupTime(lastBackup)
+                else "No backup yet.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -776,6 +784,8 @@ private fun LinkedAccountCard(account: LinkedAccount) {
                         try {
                             val json = DriveBackup.download(o.token, o.remote.id)
                             restoreFromJson(context, json)
+                            saveLastBackupTime(context, parseDriveTime(o.remote.modifiedTime))
+                            lastBackup = lastBackupTime(context)
                             say("Backup restored")
                         } catch (e: CancellationException) {
                             throw e
@@ -925,3 +935,125 @@ private fun AutoBackupToggle(vm: BadgeViewModel) {
 
 private fun formatSize(bytes: Long): String =
     if (bytes < 1024) "$bytes B" else "${bytes / 1024} KB"
+
+private const val XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+@Composable
+private fun ExportButton() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val account = GoogleAccountStore.account
+    var showDialog by remember { mutableStateOf(false) }
+    var format by remember { mutableStateOf("csv") }
+    var busy by remember { mutableStateOf(false) }
+    val today = LocalDate.now().toString()
+
+    fun save(uri: Uri?, bytes: suspend () -> ByteArray) {
+        if (uri == null) return
+        scope.launch {
+            busy = true
+            try {
+                val data = bytes()
+                context.contentResolver.openOutputStream(uri)?.use { it.write(data) }
+                Toast.makeText(context, "Export saved", Toast.LENGTH_LONG).show()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("BadgeExport", "Export failed", e)
+                Toast.makeText(context, "Couldn't save the export. Please try again.", Toast.LENGTH_LONG).show()
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    val csvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        save(uri) { buildCsv(loadExportRows(context), bom = true).toByteArray(Charsets.UTF_8) }
+    }
+    val xlsxLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(XLSX_MIME)
+    ) { uri ->
+        save(uri) { buildXlsx(loadExportRows(context)) }
+    }
+    val runDrive = rememberDriveRunner(
+        account?.email ?: "",
+        onBusy = { busy = it },
+        onError = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() },
+        scope = DRIVE_FILE_SCOPE
+    )
+
+    OutlinedButton(
+        onClick = { showDialog = true },
+        enabled = !busy,
+        modifier = Modifier.fillMaxWidth()
+    ) { Text("Export expenses") }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Export expenses") },
+            text = {
+                Column {
+                    ExportOption("csv", "CSV", "Opens in any spreadsheet app", true, format) { format = it }
+                    ExportOption("xlsx", "Excel (.xlsx)", "Formatted dates and amounts", true, format) { format = it }
+                    ExportOption(
+                        "sheets", "Google Sheets",
+                        if (account != null) "Creates a spreadsheet in your Drive"
+                        else "Sign in with Google to use this",
+                        account != null, format
+                    ) { format = it }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDialog = false
+                    when (format) {
+                        "csv" -> csvLauncher.launch("Badge-expenses-$today.csv")
+                        "xlsx" -> xlsxLauncher.launch("Badge-expenses-$today.xlsx")
+                        else -> runDrive { token ->
+                            val csv = buildCsv(loadExportRows(context), bom = false)
+                            val link = DriveBackup.createSheet(token, "Badge expenses $today", csv)
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, link.toUri())
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                    }
+                }) { Text("Export") }
+            },
+            dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+@Composable
+private fun ExportOption(
+    key: String,
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled) { onSelect(key) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected == key && enabled, onClick = null, enabled = enabled)
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
