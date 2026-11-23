@@ -1,18 +1,29 @@
 package com.astrix.badge
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -24,18 +35,28 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.edit
 import android.util.Log
@@ -44,22 +65,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.core.net.toUri
 
-private fun groupOf(key: Any): String? {
-    val k = key.toString()
-    return when {
-        k.startsWith("cat-") -> "cat"
-        k.startsWith("acc-") -> "acc"
-        k.startsWith("btn-") -> "btn"
-        else -> null
-    }
-}
-
-private fun <T> List<T>.moved(fromKey: String, toKey: String, keyOf: (T) -> String): List<T> {
-    val from = indexOfFirst { keyOf(it) == fromKey }
-    val to = indexOfFirst { keyOf(it) == toKey }
-    if (from < 0 || to < 0 || from == to) return this
-    return toMutableList().apply { add(to, removeAt(from)) }
-}
+private const val MAX_CATEGORIES = 20
+private const val MAX_ACCOUNTS = 10
 
 @Composable
 fun SettingsScreen(
@@ -83,142 +90,155 @@ fun SettingsScreen(
     var editingAcc by remember { mutableStateOf<Account?>(null) }
     var editingBtn by remember { mutableStateOf<QuickButton?>(null) }
 
+    var catsOpen by rememberSaveable { mutableStateOf(false) }
+    var accsOpen by rememberSaveable { mutableStateOf(false) }
+    var btnsOpen by rememberSaveable { mutableStateOf(false) }
+    val toggleCats = {
+        val open = !catsOpen
+        catsOpen = open
+        if (open) { accsOpen = false; btnsOpen = false }
+    }
+    val toggleAccs = {
+        val open = !accsOpen
+        accsOpen = open
+        if (open) { catsOpen = false; btnsOpen = false }
+    }
+    val toggleBtns = {
+        val open = !btnsOpen
+        btnsOpen = open
+        if (open) { catsOpen = false; accsOpen = false }
+    }
+
+    val saveCatOrder = {
+        val ids = catOrder.map { it.id }
+        if (ids != categories.map { it.id }) vm.reorderCategories(ids)
+    }
+    val saveAccOrder = {
+        val ids = accOrder.map { it.id }
+        if (ids != accounts.map { it.id }) vm.reorderAccounts(ids)
+    }
+    val saveBtnOrder = {
+        val ids = btnOrder.map { it.id }
+        if (ids != buttons.map { it.id }) vm.reorderQuickButtons(ids)
+    }
+
     val listState = rememberLazyListState()
-    val reorder = rememberReorderState(
-        listState = listState,
-        sameGroup = { a, b -> groupOf(a) != null && groupOf(a) == groupOf(b) },
-        onMove = { from, to ->
-            when (groupOf(from)) {
-                "cat" -> {
-                    val moved = catOrder.moved(from.toString(), to.toString()) { "cat-" + it.id }
-                    val changed = moved !== catOrder
-                    catOrder = moved
-                    changed
-                }
-                "acc" -> {
-                    val moved = accOrder.moved(from.toString(), to.toString()) { "acc-" + it.id }
-                    val changed = moved !== accOrder
-                    accOrder = moved
-                    changed
-                }
-                "btn" -> {
-                    val moved = btnOrder.moved(from.toString(), to.toString()) { "btn-" + it.id }
-                    val changed = moved !== btnOrder
-                    btnOrder = moved
-                    changed
-                }
-                else -> false
-            }
-        },
-        onDrop = {
-            val catIds = catOrder.map { it.id }
-            if (catIds != categories.map { it.id }) vm.reorderCategories(catIds)
-            val accIds = accOrder.map { it.id }
-            if (accIds != accounts.map { it.id }) vm.reorderAccounts(accIds)
-            val btnIds = btnOrder.map { it.id }
-            if (btnIds != buttons.map { it.id }) vm.reorderQuickButtons(btnIds)
-        }
-    )
 
     LazyColumn(
         state = listState,
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Currency
+        // Account
+        item(key = "label-account") { SectionLabel("Account", first = true) }
+        item(key = "google") { GoogleAccountCard() }
+        item(key = "auto-backup") { AutoBackupToggle(vm) }
+
+        // Preferences
+        item(key = "label-prefs") { SectionLabel("Preferences") }
         item(key = "currency-title") {
-            Text("Currency", style = MaterialTheme.typography.titleLarge)
+            Text("Currency", style = MaterialTheme.typography.titleMedium)
         }
         item(key = "currency") { CurrencyPicker() }
-        item(key = "gap-anim") { Spacer(Modifier.height(8.dp)) }
         item(key = "animations") { AnimationToggle() }
-        item(key = "gap-alerts") { Spacer(Modifier.height(8.dp)) }
         item(key = "alerts") { BudgetAlertsToggle(vm) }
-        item(key = "gap-auto") { Spacer(Modifier.height(8.dp)) }
-        item(key = "auto-backup") { AutoBackupToggle(vm) }
-        item(key = "gap-1") { Spacer(Modifier.height(16.dp)) }
 
-        // Categories
-        item(key = "categories-title") {
-            Text(
-                "Categories",
-                style = MaterialTheme.typography.titleLarge,
+        // Customize
+        item(key = "label-customize") { SectionLabel("Customize") }
+
+        item(key = "categories") {
+            ExpandableCard(
+                title = "Categories",
+                expanded = catsOpen,
+                onToggle = toggleCats,
                 modifier = Modifier.tourTarget(tour, TourTarget.SETTINGS_CATEGORIES)
-            )
-        }
-        items(catOrder, key = { "cat-" + it.id }, contentType = { "category" }) { c ->
-            ReorderRow(reorder, "cat-" + c.id) { dragHandle ->
-                CategoryRow(
-                    category = c,
-                    dragHandle = dragHandle,
-                    onEdit = { editingCat = c },
-                    onDelete = { onDeleteCategory(c) }
+            ) {
+                ReorderColumn(
+                    items = catOrder,
+                    keyOf = { it.id },
+                    onMove = { from, to -> catOrder = catOrder.reordered(from, to) },
+                    onDrop = saveCatOrder
+                ) { c, handle ->
+                    CategoryRow(
+                        category = c,
+                        dragHandle = handle,
+                        onEdit = { editingCat = c },
+                        onDelete = { onDeleteCategory(c) }
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                AddCategoryRow(
+                    atLimit = categories.size >= MAX_CATEGORIES,
+                    onAdd = { name, icon -> vm.addCategory(name, icon) }
                 )
             }
         }
-        item(key = "add-category") {
-            AddCategoryRow(onAdd = { name, icon -> vm.addCategory(name, icon) })
-        }
-        item(key = "gap-2") { Spacer(Modifier.height(16.dp)) }
 
-        // Accounts
-        item(key = "accounts-title") {
-            Text("Accounts", style = MaterialTheme.typography.titleLarge)
-        }
-        items(accOrder, key = { "acc-" + it.id }, contentType = { "account" }) { a ->
-            ReorderRow(reorder, "acc-" + a.id) { dragHandle ->
-                AccountRow(
-                    account = a,
-                    dragHandle = dragHandle,
-                    onEdit = { editingAcc = a },
-                    onDelete = { onDeleteAccount(a) }
+        item(key = "accounts") {
+            ExpandableCard("Accounts", accsOpen, toggleAccs) {
+                ReorderColumn(
+                    items = accOrder,
+                    keyOf = { it.id },
+                    onMove = { from, to -> accOrder = accOrder.reordered(from, to) },
+                    onDrop = saveAccOrder
+                ) { a, handle ->
+                    AccountRow(
+                        account = a,
+                        dragHandle = handle,
+                        onEdit = { editingAcc = a },
+                        onDelete = { onDeleteAccount(a) }
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                AddAccountRow(
+                    atLimit = accounts.size >= MAX_ACCOUNTS,
+                    onAdd = { name, color -> vm.addAccount(name, color) }
                 )
             }
         }
-        item(key = "add-account") {
-            AddAccountRow(onAdd = { name, color -> vm.addAccount(name, color) })
-        }
-        item(key = "gap-3") { Spacer(Modifier.height(16.dp)) }
 
-        // Quick buttons
-        item(key = "buttons-title") {
-            Text(
-                "Quick buttons (" + buttons.size + "/" + MAX_QUICK_BUTTONS + ")",
-                style = MaterialTheme.typography.titleLarge
-            )
-        }
-        items(btnOrder, key = { "btn-" + it.id }, contentType = { "button" }) { b ->
-            ReorderRow(reorder, "btn-" + b.id) { dragHandle ->
-                QuickButtonRow(
-                    button = b,
-                    categoryText = categoryById[b.categoryId]?.display() ?: "No category",
-                    account = accountById[b.accountId],
-                    dragHandle = dragHandle,
-                    onEdit = { editingBtn = b },
-                    onDelete = { onDeleteButton(b) }
+        item(key = "buttons") {
+            ExpandableCard("Quick buttons", btnsOpen, toggleBtns) {
+                ReorderColumn(
+                    items = btnOrder,
+                    keyOf = { it.id },
+                    onMove = { from, to -> btnOrder = btnOrder.reordered(from, to) },
+                    onDrop = saveBtnOrder
+                ) { b, handle ->
+                    QuickButtonRow(
+                        button = b,
+                        categoryText = categoryById[b.categoryId]?.display() ?: "No category",
+                        account = accountById[b.accountId],
+                        dragHandle = handle,
+                        onEdit = { editingBtn = b },
+                        onDelete = { onDeleteButton(b) }
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                AddQuickButtonForm(
+                    categories = categories,
+                    accounts = accounts,
+                    atLimit = buttons.size >= MAX_QUICK_BUTTONS,
+                    onAdd = { label, amount, cat, acc -> vm.addQuickButton(label, amount, cat, acc) }
                 )
             }
         }
-        item(key = "add-button") {
-            AddQuickButtonForm(
-                categories = categories,
-                accounts = accounts,
-                atLimit = buttons.size >= MAX_QUICK_BUTTONS,
-                onAdd = { label, amount, cat, acc -> vm.addQuickButton(label, amount, cat, acc) }
-            )
-        }
-        item(key = "google") {
-            Spacer(Modifier.height(8.dp))
-            GoogleAccountCard()
-            Spacer(Modifier.height(8.dp))
-        }
+
+        // Data
+        item(key = "label-data") { SectionLabel("Data") }
         item(key = "export") { ExportButton() }
+
+        // About
+        item(key = "label-about") { SectionLabel("About") }
+        item(key = "update-check") { UpdateCheckToggle() }
+        item(key = "updates") { UpdateRow() }
         item(key = "tutorial") {
             OutlinedButton(
                 onClick = { vm.startTour() },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Replay tutorial") }
         }
+        item(key = "about") { AboutSection() }
     }
 
     editingCat?.let { c ->
@@ -332,7 +352,14 @@ private fun AccountRow(
 }
 
 @Composable
-private fun AddCategoryRow(onAdd: (String, String) -> Unit) {
+private fun AddCategoryRow(atLimit: Boolean, onAdd: (String, String) -> Unit) {
+    if (atLimit) {
+        Text(
+            "You've reached the limit of $MAX_CATEGORIES categories. Delete one to add another.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
     var name by remember { mutableStateOf("") }
     var icon by remember { mutableStateOf("") }
     var showPicker by remember { mutableStateOf(false) }
@@ -368,7 +395,14 @@ private fun AddCategoryRow(onAdd: (String, String) -> Unit) {
 }
 
 @Composable
-private fun AddAccountRow(onAdd: (String, Int) -> Unit) {
+private fun AddAccountRow(atLimit: Boolean, onAdd: (String, Int) -> Unit) {
+    if (atLimit) {
+        Text(
+            "You've reached the limit of $MAX_ACCOUNTS accounts. Delete one to add another.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
     var name by remember { mutableStateOf("") }
     var colorIndex by remember { mutableIntStateOf(5) }
     var color by remember { mutableIntStateOf(ACCOUNT_COLORS[5]) }
@@ -417,7 +451,9 @@ private fun QuickButtonRow(
     onDelete: () -> Unit
 ) {
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         dragHandle()
@@ -476,14 +512,17 @@ private fun AddQuickButtonForm(
                 CategoryChips(categories, cat) { cat = it }
                 AccountChips(accounts, acc) { acc = it }
             }
-            Button(onClick = {
-                val a = amount.toDoubleOrNull()
-                if (label.isNotBlank() && a != null && a > 0) {
-                    onAdd(label.trim(), a, cat, acc)
-                    label = ""
-                    amount = ""
-                }
-            }) { Text("Add quick button") }
+            Button(
+                onClick = {
+                    val a = amount.toDoubleOrNull()
+                    if (label.isNotBlank() && a != null && a > 0) {
+                        onAdd(label.trim(), a, cat, acc)
+                        label = ""
+                        amount = ""
+                    }
+                },
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) { Text("Add quick button") }
         }
     }
 }
@@ -902,7 +941,7 @@ private fun AutoBackupToggle(vm: BadgeViewModel) {
                 Text("Automatic backup", style = MaterialTheme.typography.titleMedium)
                 Text(
                     if (linked) "Back up to your Google Drive once a day."
-                    else "Link a Google account below to use this.",
+                    else "Sign in with Google account to enable.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1054,6 +1093,248 @@ private fun ExportOption(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+private fun UpdateCheckToggle() {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE) }
+    var enabled by remember { mutableStateOf(prefs.getBoolean("auto_update_check", true)) }
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Update checks", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Look for new versions on GitHub when the app opens.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = enabled,
+            onCheckedChange = {
+                enabled = it
+                prefs.edit { putBoolean("auto_update_check", it) }
+            }
+        )
+    }
+}
+
+@Composable
+private fun UpdateRow() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var showDialog by remember { mutableStateOf(false) }
+    val info = Updates.available
+
+    Column {
+        OutlinedButton(
+            onClick = {
+                if (info != null) {
+                    showDialog = true
+                } else {
+                    scope.launch {
+                        Updates.check(context, manual = true)
+                        if (Updates.available != null) showDialog = true
+                    }
+                }
+            },
+            enabled = !Updates.checking,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                when {
+                    Updates.checking -> "Checking…"
+                    info != null -> "Update available: " + info.version
+                    else -> "Check for updates"
+                }
+            )
+        }
+        Updates.message?.let {
+            if (!showDialog) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    val current = Updates.available
+    if (showDialog && current != null) {
+        UpdateDialog(current) { showDialog = false }
+    }
+}
+
+@Composable
+private fun AboutSection() {
+    val context = LocalContext.current
+    Column(
+        Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        OutlinedButton(
+            onClick = {
+                context.startActivity(
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        "https://github.com/$GITHUB_OWNER/$GITHUB_REPO".toUri()
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("View on GitHub") }
+        Text(
+            "Badge v" + Updates.currentVersion(context) + " · ©2026 " + CREDITS_NAME,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String, first: Boolean = false) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = if (first) 0.dp else 16.dp)
+    )
+}
+
+private fun <T> List<T>.reordered(from: Int, to: Int): List<T> =
+    toMutableList().apply { add(to, removeAt(from)) }
+
+@Composable
+private fun ExpandableCard(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    @SuppressLint("ModifierParameter") modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val animate = AnimationStore.enabled
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = if (animate) tween(250) else snap(),
+        label = "chevron"
+    )
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            modifier
+                .fillMaxWidth()
+                .clickable(role = Role.Button, onClick = onToggle)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Icon(
+                Icons.Default.ArrowDropDown,
+                contentDescription = if (expanded) "Collapse" else "Expand",
+                modifier = Modifier.rotate(rotation)
+            )
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = if (animate) expandVertically(tween(250)) + fadeIn(tween(250)) else EnterTransition.None,
+            exit = if (animate) shrinkVertically(tween(200)) + fadeOut(tween(150)) else ExitTransition.None
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+            ) { content() }
+        }
+    }
+}
+
+@Composable
+private fun <T> ReorderColumn(
+    items: List<T>,
+    keyOf: (T) -> Any,
+    onMove: (from: Int, to: Int) -> Unit,
+    onDrop: () -> Unit,
+    row: @Composable (item: T, dragHandle: @Composable () -> Unit) -> Unit
+) {
+    var dragged by remember { mutableStateOf<Any?>(null) }
+    var offset by remember { mutableFloatStateOf(0f) }
+    val heights = remember { mutableStateMapOf<Any, Int>() }
+    val latestItems by rememberUpdatedState(items)
+    val latestMove by rememberUpdatedState(onMove)
+    val latestDrop by rememberUpdatedState(onDrop)
+    val gapPx = with(LocalDensity.current) { 8.dp.toPx() }
+    val shape = RoundedCornerShape(12.dp)
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items.forEach { item ->
+            val k = keyOf(item)
+            key(k) {
+                val isDragged = dragged == k
+                val handle: @Composable () -> Unit = {
+                    Icon(
+                        Icons.Default.DragHandle,
+                        contentDescription = "Reorder",
+                        modifier = Modifier
+                            .pointerInput(k) {
+                                detectDragGestures(
+                                    onDragStart = { dragged = k; offset = 0f },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        val list = latestItems
+                                        val index = list.indexOfFirst { keyOf(it) == k }
+                                        if (index >= 0) {
+                                            fun step(i: Int): Float =
+                                                (heights[keyOf(list[i])] ?: 0) + gapPx
+                                            val above = (0 until index).fold(0f) { acc, i -> acc + step(i) }
+                                            val below = (index + 1 until list.size).fold(0f) { acc, i -> acc + step(i) }
+                                            offset = (offset + amount.y).coerceIn(-above, below)
+
+                                            val next = list.getOrNull(index + 1)
+                                            val prev = list.getOrNull(index - 1)
+                                            val nextStep = if (next != null) step(index + 1) else 0f
+                                            val prevStep = if (prev != null) step(index - 1) else 0f
+                                            if (next != null && offset > nextStep / 2f) {
+                                                offset -= nextStep
+                                                latestMove(index, index + 1)
+                                            } else if (prev != null && offset < -prevStep / 2f) {
+                                                offset += prevStep
+                                                latestMove(index, index - 1)
+                                            }
+                                        }
+                                    },
+                                    onDragEnd = { dragged = null; offset = 0f; latestDrop() },
+                                    onDragCancel = { dragged = null; offset = 0f; latestDrop() }
+                                )
+                            }
+                            .padding(12.dp)
+                    )
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .zIndex(if (isDragged) 1f else 0f)
+                        .graphicsLayer { translationY = if (isDragged) offset else 0f }
+                        .shadow(if (isDragged) 8.dp else 0.dp, shape)
+                        .background(MaterialTheme.colorScheme.surface, shape)
+                        .onSizeChanged { heights[k] = it.height }
+                        .padding(horizontal = 4.dp)
+                ) { row(item, handle) }
+            }
         }
     }
 }

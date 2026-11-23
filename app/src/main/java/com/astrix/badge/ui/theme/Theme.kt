@@ -38,7 +38,11 @@ val LightColors = lightColorScheme(
     background = Color(0xFFF5FBFA),
     onBackground = Color(0xFF141D1C),
     surface = Color(0xFFF5FBFA),
-    onSurface = Color(0xFF141D1C)
+    onSurface = Color(0xFF141D1C),
+    surfaceVariant = Color(0xFFDDE8E6),
+    onSurfaceVariant = Color(0xFF3F4947),
+    outline = Color(0xFF6F7977),
+    outlineVariant = Color(0xFFBFC9C6)
 )
 
 @Composable

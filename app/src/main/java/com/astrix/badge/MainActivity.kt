@@ -31,11 +31,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.edit
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import com.astrix.badge.ui.theme.BadgeTheme
-import androidx.core.content.edit
 
 class MainActivity : ComponentActivity() {
     private val vm: BadgeViewModel by viewModels()
@@ -86,6 +86,11 @@ fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = v
         showWelcome = false
     }
     BackHandler(enabled = showWelcome) { }
+    val updatePrefs = remember { context.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE) }
+    var skippedVersion by remember { mutableStateOf(updatePrefs.getString("update_skipped", null)) }
+    LaunchedEffect(showWelcome) {
+        if (!showWelcome) Updates.autoCheck(context)
+    }
     val showTour by vm.showTour.collectAsState()
     val tourTargets = remember { TourTargets() }
     val selection = remember { SelectionState() }
@@ -330,6 +335,14 @@ fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = v
                     finishWelcome()
                     restoreEmail = null
                     signingIn = false
+                }
+            }
+            Updates.available?.let { info ->
+                if (!showWelcome && info.version != skippedVersion) {
+                    UpdateDialog(info) {
+                        skippedVersion = info.version
+                        updatePrefs.edit { putString("update_skipped", info.version) }
+                    }
                 }
             }
         }
