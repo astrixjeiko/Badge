@@ -1,7 +1,9 @@
 package com.astrix.badge
 
+import android.content.Context
 import android.os.Bundle
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -16,6 +18,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -27,10 +30,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import com.astrix.badge.ui.theme.BadgeTheme
+import androidx.core.content.edit
 
 class MainActivity : ComponentActivity() {
     private val vm: BadgeViewModel by viewModels()
@@ -49,7 +54,12 @@ class MainActivity : ComponentActivity() {
         GoogleAccountStore.load(this)
         scheduleRecurringChecks(this)
         val startTab = intent.getIntExtra(BudgetAlerts.EXTRA_OPEN_TAB, 0).coerceIn(0, 3)
-        setContent { BadgeTheme { BadgeApp(startTab = startTab) } }
+        val prefs = getSharedPreferences("badge_prefs", MODE_PRIVATE)
+        if (!prefs.getBoolean("welcome_done", false) && prefs.getBoolean("tour_done", false)) {
+            prefs.edit { putBoolean("welcome_done", true) } // existing user: skip welcome
+        }
+        val showWelcome = !prefs.getBoolean("welcome_done", false)
+        setContent { BadgeTheme { BadgeApp(startTab = startTab, welcome = showWelcome) } }
     }
 
     override fun onResume() {
@@ -59,10 +69,20 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun BadgeApp(startTab: Int = 0, vm: BadgeViewModel = viewModel()) {
+fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = viewModel()) {
     var tab by rememberSaveable { mutableIntStateOf(startTab) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var showWelcome by rememberSaveable { mutableStateOf(welcome) }
+    var signingIn by remember { mutableStateOf(false) }
+    var restoreEmail by remember { mutableStateOf<String?>(null) }
+    val finishWelcome: () -> Unit = {
+        context.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE)
+            .edit { putBoolean("welcome_done", true) }
+        showWelcome = false
+    }
+    BackHandler(enabled = showWelcome) { }
     val showTour by vm.showTour.collectAsState()
     val tourTargets = remember { TourTargets() }
     val selection = remember { SelectionState() }
@@ -253,9 +273,8 @@ fun BadgeApp(startTab: Int = 0, vm: BadgeViewModel = viewModel()) {
                     onPick = setAccountForSelected
                 )
             }
-
             AnimatedVisibility(
-                visible = showTour,
+                visible = showTour && !showWelcome,
                 modifier = Modifier.fillMaxSize(),
                 enter = fadeIn(tween(400)),
                 exit = fadeOut(tween(250))
@@ -268,6 +287,73 @@ fun BadgeApp(startTab: Int = 0, vm: BadgeViewModel = viewModel()) {
                         vm.finishTour()
                     }
                 )
+            }
+            AnimatedVisibility(
+                visible = showWelcome,
+                modifier = Modifier.fillMaxSize(),
+                exit = fadeOut(tween(300))
+            ) {
+                WelcomeScreen(
+                    animations = AnimationStore.enabled,
+                    busy = signingIn,
+                    signInButton = {
+                        GoogleSignInButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !signingIn,
+                            onClick = {
+                                signingIn = true
+                                scope.launch {
+                                    val result = linkGoogleAccount(context)
+                                    result.onSuccess {
+                                        GoogleAccountStore.save(context, it)
+                                        restoreEmail = it.email
+                                    }
+                                    result.onFailure { error ->
+                                        googleErrorMessage(error)?.let {
+                                            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                                        }
+                                        signingIn = false
+                                    }
+                                }
+                            }
+                        )
+                    },
+                    onGuest = finishWelcome
+                )
+            }
+            restoreEmail?.let { email ->
+                AutoRestore(email) { restored ->
+                    if (restored) vm.finishTour() // existing user: no tutorial
+                    finishWelcome()
+                    restoreEmail = null
+                    signingIn = false
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutoRestore(email: String, onFinished: (restored: Boolean) -> Unit) {
+    val context = LocalContext.current
+    val runDrive = rememberDriveRunner(
+        email,
+        onBusy = { },
+        onError = {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            onFinished(false)
+        }
+    )
+    LaunchedEffect(Unit) {
+        runDrive { token ->
+            val remote = DriveBackup.find(token)
+            if (remote == null) {
+                onFinished(false) // new user: continue to the tutorial
+            } else {
+                val json = DriveBackup.download(token, remote.id)
+                restoreFromJson(context, json)
+                Toast.makeText(context, "Backup restored", Toast.LENGTH_LONG).show()
+                onFinished(true)
             }
         }
     }
