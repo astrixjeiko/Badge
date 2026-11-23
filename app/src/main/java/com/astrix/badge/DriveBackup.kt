@@ -44,7 +44,10 @@ fun lastBackupTime(context: Context): Long =
     context.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE).getLong("last_backup", 0L)
 
 fun saveLastBackupTime(context: Context, millis: Long) {
-    context.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE).edit { putLong("last_backup", millis) }
+    context.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE).edit {
+        putLong("last_backup", millis)
+        if (millis > 0) remove("auto_backup_error")
+    }
 }
 
 fun formatBackupTime(millis: Long): String =
@@ -72,7 +75,7 @@ object DriveBackup {
     private const val FILE_NAME = "badge-backup.json"
     private const val FILES_URL = "https://www.googleapis.com/drive/v3/files"
 
-    class RemoteBackup(val id: String, val modifiedTime: String)
+    class RemoteBackup(val id: String, val modifiedTime: String, val size: Long = 0L)
 
     private fun open(url: String, method: String, token: String): HttpURLConnection {
         val connection = URL(url).openConnection() as HttpURLConnection
@@ -90,17 +93,27 @@ object DriveBackup {
         return text
     }
 
-    suspend fun find(token: String): RemoteBackup? = withContext(Dispatchers.IO) {
+    suspend fun list(token: String): List<RemoteBackup> = withContext(Dispatchers.IO) {
         val query = URLEncoder.encode("name='$FILE_NAME'", "UTF-8")
-        val fields = URLEncoder.encode("files(id,modifiedTime)", "UTF-8")
-        val url = "$FILES_URL?spaces=appDataFolder&q=$query&orderBy=modifiedTime%20desc&pageSize=10&fields=$fields"
+        val fields = URLEncoder.encode("files(id,modifiedTime,size)", "UTF-8")
+        val url = "$FILES_URL?spaces=appDataFolder&q=$query&orderBy=modifiedTime%20desc&pageSize=50&fields=$fields"
         val files = JSONObject(open(url, "GET", token).readBody()).getJSONArray("files")
-        if (files.length() == 0) {
-            null
-        } else {
-            val file = files.getJSONObject(0)
-            RemoteBackup(file.getString("id"), file.optString("modifiedTime"))
+        List(files.length()) { i ->
+            val f = files.getJSONObject(i)
+            RemoteBackup(
+                f.getString("id"),
+                f.optString("modifiedTime"),
+                f.optString("size").toLongOrNull() ?: 0L
+            )
         }
+    }
+
+    // Newest backup, or null if there are none
+    suspend fun find(token: String): RemoteBackup? = list(token).firstOrNull()
+
+    // Keeps only the newest few backups
+    suspend fun prune(token: String, keep: Int = 10) {
+        list(token).drop(keep).forEach { delete(token, it.id) }
     }
 
     suspend fun upload(token: String, json: String): RemoteBackup = withContext(Dispatchers.IO) {
@@ -144,6 +157,11 @@ private suspend fun authorizeDrive(context: Context, email: String): Authorizati
             .addOnSuccessListener { continuation.resume(it) }
             .addOnFailureListener { continuation.resumeWithException(it) }
     }
+
+suspend fun silentDriveToken(context: Context, email: String): String? {
+    val auth = authorizeDrive(context, email)
+    return if (auth.hasResolution()) null else auth.accessToken
+}
 
 @Composable
 fun rememberDriveRunner(

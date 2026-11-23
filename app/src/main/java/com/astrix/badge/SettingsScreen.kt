@@ -13,13 +13,15 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -126,6 +128,8 @@ fun SettingsScreen(
         item(key = "animations") { AnimationToggle() }
         item(key = "gap-alerts") { Spacer(Modifier.height(8.dp)) }
         item(key = "alerts") { BudgetAlertsToggle(vm) }
+        item(key = "gap-auto") { Spacer(Modifier.height(8.dp)) }
+        item(key = "auto-backup") { AutoBackupToggle(vm) }
         item(key = "gap-1") { Spacer(Modifier.height(16.dp)) }
 
         // Categories
@@ -527,11 +531,24 @@ private fun BudgetAlertsToggle(vm: BadgeViewModel) {
 @Composable
 private fun GoogleAccountCard() {
     val account = GoogleAccountStore.account
-    if (account == null) LinkGoogleButton() else LinkedAccountCard(account)
+    var restoreEmail by remember { mutableStateOf<String?>(null) }
+
+    Column {
+        if (account == null) {
+            LinkGoogleButton(onLinked = { restoreEmail = it })
+        } else {
+            LinkedAccountCard(account)
+        }
+        restoreEmail?.let { email ->
+            Spacer(Modifier.height(8.dp))
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            AutoRestore(email) { restoreEmail = null }
+        }
+    }
 }
 
 @Composable
-private fun LinkGoogleButton() {
+private fun LinkGoogleButton(onLinked: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
@@ -543,13 +560,16 @@ private fun LinkGoogleButton() {
             busy = true
             scope.launch {
                 val result = linkGoogleAccount(context)
-                result.onSuccess { GoogleAccountStore.save(context, it) }
+                result.onSuccess {
+                    GoogleAccountStore.save(context, it)
+                    onLinked(it.email)
+                }
                 result.onFailure { error ->
                     googleErrorMessage(error)?.let {
                         Toast.makeText(context, it, Toast.LENGTH_LONG).show()
                     }
+                    busy = false
                 }
-                busy = false
             }
         }
     )
@@ -564,6 +584,7 @@ private fun LinkedAccountCard(account: LinkedAccount) {
     var busy by remember { mutableStateOf(false) }
     var lastBackup by remember(account.email) { mutableLongStateOf(lastBackupTime(context)) }
     var offer by remember { mutableStateOf<RestoreOffer?>(null) }
+    var choices by remember { mutableStateOf<Pair<String, List<DriveBackup.RemoteBackup>>?>(null) }
     var showAccountMenu by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(16.dp)
     val initial = account.name.ifBlank { account.email }.take(1).uppercase()
@@ -614,9 +635,8 @@ private fun LinkedAccountCard(account: LinkedAccount) {
                     onClick = {
                         runDrive { token ->
                             val json = exportBackupJson(context)
-                            val previous = DriveBackup.find(token)
                             DriveBackup.upload(token, json)
-                            if (previous != null) DriveBackup.delete(token, previous.id)
+                            DriveBackup.prune(token)
                             saveLastBackupTime(context, System.currentTimeMillis())
                             lastBackup = lastBackupTime(context)
                             say("Backed up to your Google Drive")
@@ -628,9 +648,10 @@ private fun LinkedAccountCard(account: LinkedAccount) {
                     modifier = Modifier.weight(1f),
                     onClick = {
                         runDrive { token ->
-                            val remote = DriveBackup.find(token)
-                            if (remote == null) say("No backup found in your Google Drive yet.")
-                            else offer = RestoreOffer(token, remote)
+                            val backups = DriveBackup.list(token)
+                            if (backups.isEmpty()) say("No backup found in your Google Drive yet.")
+                            else if (backups.size == 1) offer = RestoreOffer(token, backups[0])
+                            else choices = token to backups
                         }
                     }
                 ) { Text("Restore") }
@@ -692,14 +713,17 @@ private fun LinkedAccountCard(account: LinkedAccount) {
                     )
                     HorizontalDivider(Modifier.padding(vertical = 4.dp))
                     AccountMenuRow(
-                        title = "Use guest account",
-                        subtitle = "Unlinks Google. Your data stays on this device and in your Drive.",
-                        leading = { MenuIcon(Icons.Default.Person) },
+                        title = "Sign out",
+                        subtitle = null,
+                        leading = { MenuIcon(Icons.AutoMirrored.Filled.ExitToApp) },
                         onClick = {
                             showAccountMenu = false
                             scope.launch {
                                 unlinkGoogleAccount(context)
                                 saveLastBackupTime(context, 0L)
+                                context.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE)
+                                    .edit { putString("auto_backup", "off") }
+                                scheduleAutoBackup(context)
                             }
                         }
                     )
@@ -707,6 +731,30 @@ private fun LinkedAccountCard(account: LinkedAccount) {
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { showAccountMenu = false }) { Text("Cancel") } }
+        )
+    }
+
+    choices?.let { (token, list) ->
+        AlertDialog(
+            onDismissRequest = { choices = null },
+            title = { Text("Choose a backup") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    list.forEachIndexed { i, b ->
+                        AccountMenuRow(
+                            title = formatBackupTime(parseDriveTime(b.modifiedTime)),
+                            subtitle = (if (i == 0) "Latest · " else "") + formatSize(b.size),
+                            leading = { MenuIcon(Icons.Default.History) },
+                            onClick = {
+                                choices = null
+                                offer = RestoreOffer(token, b)
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { choices = null }) { Text("Cancel") } }
         )
     }
 
@@ -806,3 +854,74 @@ private fun AccountMenuRow(
         trailing?.invoke()
     }
 }
+
+@Composable
+private fun AutoBackupToggle(vm: BadgeViewModel) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE) }
+    val account = GoogleAccountStore.account
+    val linked = account != null
+    val resumes by vm.resumes.collectAsState()
+    var on by remember(account) { mutableStateOf(prefs.getString("auto_backup", "off") == "daily") }
+
+    fun setOn(value: Boolean) {
+        on = value
+        prefs.edit { putString("auto_backup", if (value) "daily" else "off") }
+        scheduleAutoBackup(context)
+    }
+
+    val runDrive = rememberDriveRunner(
+        account?.email ?: "",
+        onBusy = { },
+        onError = {
+            setOn(false)
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+        }
+    )
+    val needsPermission = remember(resumes, on) {
+        on && prefs.getString("auto_backup_error", null) != null
+    }
+
+    Column {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Automatic backup", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (linked) "Back up to your Google Drive once a day."
+                    else "Link a Google account below to use this.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(
+                checked = on && linked,
+                enabled = linked,
+                onCheckedChange = { checked ->
+                    setOn(checked)
+                    if (checked) {
+                        runDrive { token ->
+                            runBackup(context, token)
+                            Toast.makeText(context, "Automatic backup is on", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            )
+        }
+        if (needsPermission) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Badge needs your permission again. Turn this off and on to allow it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}
+
+private fun formatSize(bytes: Long): String =
+    if (bytes < 1024) "$bytes B" else "${bytes / 1024} KB"

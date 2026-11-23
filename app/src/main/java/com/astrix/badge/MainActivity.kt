@@ -53,6 +53,9 @@ class MainActivity : ComponentActivity() {
         AnimationStore.load(this)
         GoogleAccountStore.load(this)
         scheduleRecurringChecks(this)
+        scheduleAutoBackup(this)
+        // Temp
+        androidx.work.WorkManager.getInstance(this).enqueue(androidx.work.OneTimeWorkRequestBuilder<AutoBackupWorker>().build())
         val startTab = intent.getIntExtra(BudgetAlerts.EXTRA_OPEN_TAB, 0).coerceIn(0, 3)
         val prefs = getSharedPreferences("badge_prefs", MODE_PRIVATE)
         if (!prefs.getBoolean("welcome_done", false) && prefs.getBoolean("tour_done", false)) {
@@ -334,7 +337,7 @@ fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = v
 }
 
 @Composable
-private fun AutoRestore(email: String, onFinished: (restored: Boolean) -> Unit) {
+fun AutoRestore(email: String, onFinished: (restored: Boolean) -> Unit) {
     val context = LocalContext.current
     val runDrive = rememberDriveRunner(
         email,
@@ -352,7 +355,6 @@ private fun AutoRestore(email: String, onFinished: (restored: Boolean) -> Unit) 
             } else {
                 val json = DriveBackup.download(token, remote.id)
                 restoreFromJson(context, json)
-                Toast.makeText(context, "Backup restored", Toast.LENGTH_LONG).show()
                 onFinished(true)
             }
         }
