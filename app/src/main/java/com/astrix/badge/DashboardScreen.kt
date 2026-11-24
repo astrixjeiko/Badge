@@ -1,21 +1,114 @@
 package com.astrix.badge
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 private const val WARN_START = 0.85f
+private enum class SummaryPeriod(
+    val label: String,
+    val title: String,
+    val days: Double,
+    val budgetKey: String
+) {
+    TODAY("Today", "Spent today", 1.0, "DAY"),
+    WEEK("This week", "Spent this week", 7.0, "WEEK"),
+    MONTH("This month", "Spent this month", 30.0, "MONTH")
+}
+
+// Overall budgets of a period if there are any
+private fun periodBudget(budgets: List<Budget>, key: String): Double {
+    val ofPeriod = budgets.filter { it.period == key }
+    val overall = ofPeriod.filter { it.categoryId == null }
+    return (overall.ifEmpty { ofPeriod }).sumOf { it.limitAmount }
+}
+
+// The amount the card fills toward for a period
+private fun budgetFor(budgets: List<Budget>, period: SummaryPeriod, fallbackDaily: Double): Double {
+    val exact = periodBudget(budgets, period.budgetKey)
+    if (exact > 0) return exact
+    val perDay = listOf(
+        periodBudget(budgets, "DAY"),
+        periodBudget(budgets, "WEEK") / 7.0,
+        periodBudget(budgets, "MONTH") / 30.0,
+        periodBudget(budgets, "YEAR") / 365.0
+    ).firstOrNull { it > 0 }
+    return (perDay ?: fallbackDaily) * period.days
+}
+
+@Composable
+private fun PeriodLink(
+    label: String,
+    amount: Double,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val source = remember { MutableInteractionSource() }
+    val hovered by source.collectIsHoveredAsState()
+    val pressed by source.collectIsPressedAsState()
+    val active = hovered || pressed
+    val base = LocalContentColor.current
+    val color by animateColorAsState(
+        targetValue = base.copy(alpha = if (active) 0.6f else 1f),
+        animationSpec = if (AnimationStore.enabled) tween(150) else snap(),
+        label = "period-link"
+    )
+    val decoration = if (active) TextDecoration.Underline else null
+    Column(
+        modifier
+            .hoverable(source)
+            .clickable(
+                interactionSource = source,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick
+            )
+    ) {
+        Text(
+            "$label:",
+            color = color,
+            textDecoration = decoration,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            money(amount),
+            color = color,
+            textDecoration = decoration,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
 
 @Composable
 private fun Section(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
@@ -51,11 +144,18 @@ fun DashboardScreen(
     val chosenAccount = account?.takeIf { id -> accounts.any { it.id == id } }
     val reference by vm.dailyReference.collectAsState()
 
-    val ratio = if (reference.amount > 0) (today / reference.amount).toFloat() else 0f
-    val full = reference.amount > 0 && ratio >= 1f
+    val budgets by vm.budgets.collectAsState()
+    var summaryIndex by rememberSaveable { mutableIntStateOf(0) }
+    val summary = SummaryPeriod.entries[summaryIndex]
+    val totals = listOf(today, week, month)
+    val spent = totals[summaryIndex]
+    val limit = budgetFor(budgets, summary, reference.amount)
+
+    val ratio = if (limit > 0) (spent / limit).toFloat() else 0f
+    val full = limit > 0 && ratio >= 1f
     val level = when {
-        reference.amount > 0 -> ratio.coerceIn(0f, 1f)
-        today > 0 -> 0.4f
+        limit > 0 -> ratio.coerceIn(0f, 1f)
+        spent > 0 -> 0.4f
         else -> 0f
     }
 
@@ -108,16 +208,50 @@ fun DashboardScreen(
                             modifier = Modifier.matchParentSize()
                         )
                         Column(Modifier.padding(20.dp)) {
-                            Text("Spent today", style = MaterialTheme.typography.labelLarge)
-                            Text(
-                                money(today),
-                                style = MaterialTheme.typography.displayMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                                Text("Week: " + money(week))
-                                Text("Month: " + money(month))
+                            AnimatedContent(
+                                targetState = summaryIndex,
+                                modifier = Modifier.fillMaxWidth(),
+                                transitionSpec = {
+                                    if (!AnimationStore.enabled) {
+                                        EnterTransition.None togetherWith ExitTransition.None
+                                    } else {
+                                        val dir = if (targetState > initialState) 1 else -1
+                                        (slideInHorizontally(tween(300)) { it / 6 * dir } + fadeIn(tween(300))) togetherWith
+                                                (slideOutHorizontally(tween(300)) { -it / 6 * dir } + fadeOut(tween(200)))
+                                    }
+                                },
+                                label = "summary-period"
+                            ) { index ->
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(
+                                        SummaryPeriod.entries[index].title,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        money(totals[index]),
+                                        style = MaterialTheme.typography.displayMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(24.dp)
+                                    ) {
+                                        SummaryPeriod.entries.forEachIndexed { i, other ->
+                                            if (i != index) {
+                                                PeriodLink(
+                                                    other.label,
+                                                    totals[i],
+                                                    Modifier.weight(1f, fill = false)
+                                                ) { summaryIndex = i }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -171,7 +305,7 @@ fun DashboardScreen(
                         vm.rememberAccount(it)
                     }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
                 OutlinedTextField(
                     value = note,
                     onValueChange = { note = it },

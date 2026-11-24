@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalContext
@@ -70,18 +71,20 @@ private fun Context.findLifecycleOwner(): LifecycleOwner? {
 }
 
 @Composable
-private fun rememberTilt(enabled: Boolean): State<Float> {
+private fun rememberTilt(enabled: Boolean, listening: Boolean): State<Float> {
     val context = LocalContext.current
     val view = LocalView.current
     val tilt = remember { mutableFloatStateOf(0f) }
     val owner = remember(context) { context.findLifecycleOwner() }
 
-    DisposableEffect(enabled, owner) {
+    DisposableEffect(enabled, listening, owner) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         val sensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
         if (!enabled || owner == null || sensorManager == null || sensor == null) {
             tilt.floatValue = 0f
+            onDispose { }
+        } else if (!listening) {
             onDispose { }
         } else {
             val listener = object : SensorEventListener {
@@ -137,11 +140,13 @@ private fun rememberTilt(enabled: Boolean): State<Float> {
 }
 
 // The liquid
+val LocalPageActive = compositionLocalOf { true }
 
 @Composable
 fun LiquidBackground(level: Float, full: Boolean, modifier: Modifier = Modifier) {
     val animated = AnimationStore.enabled
-    val tilt = rememberTilt(animated)
+    val active = LocalPageActive.current
+    val tilt = rememberTilt(animated, active)
     val liquidColor = MaterialTheme.colorScheme.primary
 
     val targetLevel = if (full) FULL_LEVEL else 0.05f + 0.85f * level.coerceIn(0f, 1f)
@@ -175,28 +180,32 @@ fun LiquidBackground(level: Float, full: Boolean, modifier: Modifier = Modifier)
         }
     }
 
-    val phaseFront: State<Float>
-    val phaseBack: State<Float>
-    if (animated) {
-        val transition = rememberInfiniteTransition(label = "liquid-waves")
-        phaseFront = transition.animateFloat(
-            initialValue = 0f,
-            targetValue = TWO_PI,
-            animationSpec = infiniteRepeatable(tween(4200, easing = LinearEasing)),
-            label = "wave-front"
-        )
-        phaseBack = transition.animateFloat(
-            initialValue = TWO_PI,
-            targetValue = 0f,
-            animationSpec = infiniteRepeatable(tween(6300, easing = LinearEasing)),
-            label = "wave-back"
-        )
-    } else {
-        phaseFront = remember { mutableFloatStateOf(0f) }
-        phaseBack = remember { mutableFloatStateOf(0f) }
+    val phaseFront = remember { mutableFloatStateOf(0f) }
+    val phaseBack = remember { mutableFloatStateOf(TWO_PI) }
+    LaunchedEffect(animated, active, full) {
+        if (animated && active) {
+            val begin = withFrameNanos { it }
+            var last = begin
+            var running = true
+            while (running) {
+                withFrameNanos { now ->
+                    val dt = (now - last) / 1_000_000_000f
+                    last = now
+                    phaseFront.floatValue =
+                        (phaseFront.floatValue + dt * TWO_PI / 4.2f) % TWO_PI
+                    phaseBack.floatValue =
+                        ((phaseBack.floatValue - dt * TWO_PI / 6.3f) % TWO_PI + TWO_PI) % TWO_PI
+                    // Once the glass is full the waves have flattened, so stop redrawing
+                    if (full && now - begin > 1_000_000_000L) running = false
+                }
+            }
+        }
     }
 
-    Canvas(modifier) {
+    val path = remember { Path() }
+
+    // Its own layer, so redrawing the waves doesn't redraw the card's text
+    Canvas(modifier.graphicsLayer { }) {
         val fill = shownLevel.value.coerceIn(0f, FULL_LEVEL + 0.15f)
         val settle = 1f - calm.value
         val angle = shownTilt.value * settle
@@ -208,12 +217,13 @@ fun LiquidBackground(level: Float, full: Boolean, modifier: Modifier = Modifier)
         }
         val fade = 1f - FULL_WATER_FADE * calm.value
 
-        drawWave(liquidColor.copy(alpha = 0.22f * fade), fill + 0.02f, angle, phaseBack.value, amplitude * 1.3f, 1.6f)
-        drawWave(liquidColor.copy(alpha = 0.38f * fade), fill, angle, phaseFront.value, amplitude, 1.1f)
+        drawWave(path, liquidColor.copy(alpha = 0.22f * fade), fill + 0.02f, angle, phaseBack.floatValue, amplitude * 1.3f, 1.6f)
+        drawWave(path, liquidColor.copy(alpha = 0.38f * fade), fill, angle, phaseFront.floatValue, amplitude, 1.1f)
     }
 }
 
 private fun DrawScope.drawWave(
+    path: Path,
     color: Color,
     fill: Float,
     tilt: Float,
@@ -227,7 +237,7 @@ private fun DrawScope.drawWave(
     val slope = tan(tilt)
     val step = 8.dp.toPx()
 
-    val path = Path()
+    path.rewind()
     path.moveTo(0f, h)
     var x = 0f
     while (x < w) {

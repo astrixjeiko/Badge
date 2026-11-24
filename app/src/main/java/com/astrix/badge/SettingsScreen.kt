@@ -64,6 +64,7 @@ import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.core.net.toUri
+import androidx.compose.runtime.collectAsState
 
 private const val MAX_CATEGORIES = 20
 private const val MAX_ACCOUNTS = 10
@@ -122,7 +123,9 @@ fun SettingsScreen(
         if (ids != buttons.map { it.id }) vm.reorderQuickButtons(ids)
     }
 
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = if (vm.showTour.collectAsState().value) 8 else 0
+    )
 
     LazyColumn(
         state = listState,
@@ -146,81 +149,83 @@ fun SettingsScreen(
         // Customize
         item(key = "label-customize") { SectionLabel("Customize") }
 
-        item(key = "categories") {
-            ExpandableCard(
-                title = "Categories",
-                expanded = catsOpen,
-                onToggle = toggleCats,
-                modifier = Modifier.tourTarget(tour, TourTarget.SETTINGS_CATEGORIES)
+        item(key = "customize") {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .tourTarget(tour, TourTarget.SETTINGS_CATEGORIES),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ReorderColumn(
-                    items = catOrder,
-                    keyOf = { it.id },
-                    onMove = { from, to -> catOrder = catOrder.reordered(from, to) },
-                    onDrop = saveCatOrder
-                ) { c, handle ->
-                    CategoryRow(
-                        category = c,
-                        dragHandle = handle,
-                        onEdit = { editingCat = c },
-                        onDelete = { onDeleteCategory(c) }
+                ExpandableCard(
+                    title = "Categories",
+                    expanded = catsOpen,
+                    onToggle = toggleCats
+                ) {
+                    ReorderColumn(
+                        items = catOrder,
+                        keyOf = { it.id },
+                        onMove = { from, to -> catOrder = catOrder.reordered(from, to) },
+                        onDrop = saveCatOrder
+                    ) { c, handle ->
+                        CategoryRow(
+                            category = c,
+                            dragHandle = handle,
+                            onEdit = { editingCat = c },
+                            onDelete = { onDeleteCategory(c) }
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    AddCategoryRow(
+                        atLimit = categories.size >= MAX_CATEGORIES,
+                        onAdd = { name, icon -> vm.addCategory(name, icon) }
                     )
                 }
-                Spacer(Modifier.height(8.dp))
-                AddCategoryRow(
-                    atLimit = categories.size >= MAX_CATEGORIES,
-                    onAdd = { name, icon -> vm.addCategory(name, icon) }
-                )
-            }
-        }
 
-        item(key = "accounts") {
-            ExpandableCard("Accounts", accsOpen, toggleAccs) {
-                ReorderColumn(
-                    items = accOrder,
-                    keyOf = { it.id },
-                    onMove = { from, to -> accOrder = accOrder.reordered(from, to) },
-                    onDrop = saveAccOrder
-                ) { a, handle ->
-                    AccountRow(
-                        account = a,
-                        dragHandle = handle,
-                        onEdit = { editingAcc = a },
-                        onDelete = { onDeleteAccount(a) }
+                ExpandableCard("Accounts", accsOpen, toggleAccs) {
+                    ReorderColumn(
+                        items = accOrder,
+                        keyOf = { it.id },
+                        onMove = { from, to -> accOrder = accOrder.reordered(from, to) },
+                        onDrop = saveAccOrder
+                    ) { a, handle ->
+                        AccountRow(
+                            account = a,
+                            dragHandle = handle,
+                            onEdit = { editingAcc = a },
+                            onDelete = { onDeleteAccount(a) }
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    AddAccountRow(
+                        atLimit = accounts.size >= MAX_ACCOUNTS,
+                        onAdd = { name, color -> vm.addAccount(name, color) }
                     )
                 }
-                Spacer(Modifier.height(8.dp))
-                AddAccountRow(
-                    atLimit = accounts.size >= MAX_ACCOUNTS,
-                    onAdd = { name, color -> vm.addAccount(name, color) }
-                )
-            }
-        }
 
-        item(key = "buttons") {
-            ExpandableCard("Quick buttons", btnsOpen, toggleBtns) {
-                ReorderColumn(
-                    items = btnOrder,
-                    keyOf = { it.id },
-                    onMove = { from, to -> btnOrder = btnOrder.reordered(from, to) },
-                    onDrop = saveBtnOrder
-                ) { b, handle ->
-                    QuickButtonRow(
-                        button = b,
-                        categoryText = categoryById[b.categoryId]?.display() ?: "No category",
-                        account = accountById[b.accountId],
-                        dragHandle = handle,
-                        onEdit = { editingBtn = b },
-                        onDelete = { onDeleteButton(b) }
+                ExpandableCard("Quick buttons", btnsOpen, toggleBtns) {
+                    ReorderColumn(
+                        items = btnOrder,
+                        keyOf = { it.id },
+                        onMove = { from, to -> btnOrder = btnOrder.reordered(from, to) },
+                        onDrop = saveBtnOrder
+                    ) { b, handle ->
+                        QuickButtonRow(
+                            button = b,
+                            categoryText = categoryById[b.categoryId]?.display() ?: "No category",
+                            account = accountById[b.accountId],
+                            dragHandle = handle,
+                            onEdit = { editingBtn = b },
+                            onDelete = { onDeleteButton(b) }
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    AddQuickButtonForm(
+                        categories = categories,
+                        accounts = accounts,
+                        atLimit = buttons.size >= MAX_QUICK_BUTTONS,
+                        onAdd = { label, amount, cat, acc -> vm.addQuickButton(label, amount, cat, acc) }
                     )
                 }
-                Spacer(Modifier.height(8.dp))
-                AddQuickButtonForm(
-                    categories = categories,
-                    accounts = accounts,
-                    atLimit = buttons.size >= MAX_QUICK_BUTTONS,
-                    onAdd = { label, amount, cat, acc -> vm.addQuickButton(label, amount, cat, acc) }
-                )
             }
         }
 
@@ -499,7 +504,9 @@ private fun AddQuickButtonForm(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     } else {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column {
+            CategoryChips(categories, cat) { cat = it }
+            AccountChips(accounts, acc) { acc = it }
             OutlinedTextField(
                 value = label,
                 onValueChange = { label = it },
@@ -507,22 +514,21 @@ private fun AddQuickButtonForm(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            AmountField(amount, { amount = it }, Modifier.fillMaxWidth())
-            Column {
-                CategoryChips(categories, cat) { cat = it }
-                AccountChips(accounts, acc) { acc = it }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                AmountField(amount, { amount = it }, Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                Box(Modifier.height(56.dp), contentAlignment = Alignment.Center) {
+                    Button(onClick = {
+                        val a = amount.toDoubleOrNull()
+                        if (label.isNotBlank() && a != null && a > 0) {
+                            onAdd(label.trim(), a, cat, acc)
+                            label = ""
+                            amount = ""
+                        }
+                    }) { Text("Add") }
+                }
             }
-            Button(
-                onClick = {
-                    val a = amount.toDoubleOrNull()
-                    if (label.isNotBlank() && a != null && a > 0) {
-                        onAdd(label.trim(), a, cat, acc)
-                        label = ""
-                        amount = ""
-                    }
-                },
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            ) { Text("Add quick button") }
         }
     }
 }

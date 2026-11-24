@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Home
@@ -194,6 +196,33 @@ fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = v
         "Settings" to Icons.Default.Settings
     )
 
+    val pagerState = rememberPagerState(initialPage = tab) { tabs.size }
+    var jumping by remember { mutableStateOf(false) }
+
+    LaunchedEffect(tab) {
+        val from = pagerState.currentPage
+        if (from != tab) {
+            jumping = true
+            try {
+                if (AnimationStore.enabled && !showTour) {
+                    if (kotlin.math.abs(tab - from) > 1) {
+                        pagerState.scrollToPage(if (tab > from) tab - 1 else tab + 1)
+                    }
+                    pagerState.animateScrollToPage(tab)
+                } else {
+                    pagerState.scrollToPage(tab)
+                }
+            } finally {
+                jumping = false
+            }
+        }
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            if (!jumping && page != tab) tab = page
+        }
+    }
+
     CompositionLocalProvider(
         LocalTourTargets provides tourTargets,
         LocalSelection provides selection
@@ -220,7 +249,7 @@ fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = v
                     NavigationBar {
                         tabs.forEachIndexed { i, (label, icon) ->
                             NavigationBarItem(
-                                selected = tab == i,
+                                selected = pagerState.targetPage == i,
                                 onClick = { tab = i; showStats = false },
                                 icon = { Icon(icon, contentDescription = label) },
                                 label = { Text(label) },
@@ -235,25 +264,36 @@ fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = v
                 }
             ) { padding ->
                 Box(Modifier.padding(padding)) {
-                    when (tab) {
-                        0 -> DashboardScreen(
-                            vm,
-                            onSeeAll = { tab = 1 },
-                            onOpenStats = { showStats = true },
-                            onDelete = deleteWithUndo
-                        )
-                        1 -> HistoryScreen(vm, onDelete = deleteWithUndo)
-                        2 -> PlanScreen(
-                            vm,
-                            onDeleteBudget = deleteBudgetWithUndo,
-                            onDeleteRecurring = deleteRecurringWithUndo
-                        )
-                        else -> SettingsScreen(
-                            vm,
-                            onDeleteCategory = deleteCategoryWithUndo,
-                            onDeleteAccount = deleteAccountWithUndo,
-                            onDeleteButton = deleteButtonWithUndo
-                        )
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        beyondViewportPageCount = 1,
+                        userScrollEnabled = !selection.active && !showStats && !showTour
+                    ) { page ->
+                        CompositionLocalProvider(
+                            LocalPageActive provides (pagerState.currentPage == page)
+                        ) {
+                            when (page) {
+                                0 -> DashboardScreen(
+                                    vm,
+                                    onSeeAll = { tab = 1 },
+                                    onOpenStats = { showStats = true },
+                                    onDelete = deleteWithUndo
+                                )
+                                1 -> HistoryScreen(vm, onDelete = deleteWithUndo)
+                                2 -> PlanScreen(
+                                    vm,
+                                    onDeleteBudget = deleteBudgetWithUndo,
+                                    onDeleteRecurring = deleteRecurringWithUndo
+                                )
+                                else -> SettingsScreen(
+                                    vm,
+                                    onDeleteCategory = deleteCategoryWithUndo,
+                                    onDeleteAccount = deleteAccountWithUndo,
+                                    onDeleteButton = deleteButtonWithUndo
+                                )
+                            }
+                        }
                     }
 
                     AnimatedVisibility(
