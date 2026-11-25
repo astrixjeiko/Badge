@@ -74,7 +74,10 @@ fun SettingsScreen(
     vm: BadgeViewModel,
     onDeleteCategory: (Category) -> Unit,
     onDeleteAccount: (Account) -> Unit,
-    onDeleteButton: (QuickButton) -> Unit
+    onDeleteButton: (QuickButton) -> Unit,
+    onSignedIn: (String) -> Unit,
+    restoring: Boolean,
+    restoreStatus: String
 ) {
     val tour = LocalTourTargets.current
     val categories by vm.categories.collectAsState()
@@ -134,7 +137,7 @@ fun SettingsScreen(
     ) {
         // Account
         item(key = "label-account") { SectionLabel("Account", first = true) }
-        item(key = "google") { GoogleAccountCard() }
+        item(key = "google") { GoogleAccountCard(onSignedIn, restoring, restoreStatus) }
         item(key = "auto-backup") { AutoBackupToggle(vm) }
 
         // Preferences
@@ -582,26 +585,31 @@ private fun BudgetAlertsToggle(vm: BadgeViewModel) {
 }
 
 @Composable
-private fun GoogleAccountCard() {
+private fun GoogleAccountCard(onSignedIn: (String) -> Unit, restoring: Boolean, restoreStatus: String) {
     val account = GoogleAccountStore.account
-    var restoreEmail by remember { mutableStateOf<String?>(null) }
 
     Column {
         if (account == null) {
-            LinkGoogleButton(onLinked = { restoreEmail = it })
+            LinkGoogleButton(onSignedIn)
         } else {
-            key(restoreEmail) { LinkedAccountCard(account) }
+            // Rebuilt when a restore starts or ends, so "Last backup" refreshes
+            key(restoring) { LinkedAccountCard(account, restoring) }
         }
-        restoreEmail?.let { email ->
+        if (restoring) {
             Spacer(Modifier.height(8.dp))
             LinearProgressIndicator(Modifier.fillMaxWidth())
-            AutoRestore(email) { restoreEmail = null }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                restoreStatus + (if (restoreStatus.startsWith("Connecting")) " This can take a while the first time." else ""),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
 
 @Composable
-private fun LinkGoogleButton(onLinked: (String) -> Unit) {
+private fun LinkGoogleButton(onSignedIn: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
@@ -614,8 +622,9 @@ private fun LinkGoogleButton(onLinked: (String) -> Unit) {
             scope.launch {
                 val result = linkGoogleAccount(context)
                 result.onSuccess {
+                    // Start the restore first: saving the account swaps this button for the card
+                    onSignedIn(it.email)
                     GoogleAccountStore.save(context, it)
-                    onLinked(it.email)
                 }
                 result.onFailure { error ->
                     googleErrorMessage(error)?.let {
@@ -631,7 +640,7 @@ private fun LinkGoogleButton(onLinked: (String) -> Unit) {
 private class RestoreOffer(val token: String, val remote: DriveBackup.RemoteBackup)
 
 @Composable
-private fun LinkedAccountCard(account: LinkedAccount) {
+private fun LinkedAccountCard(account: LinkedAccount, restoring: Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
@@ -644,6 +653,24 @@ private fun LinkedAccountCard(account: LinkedAccount) {
 
     fun say(message: String) = Toast.makeText(context, message, Toast.LENGTH_LONG).show()
     val runDrive = rememberDriveRunner(account.email, onBusy = { busy = it }, onError = { say(it) })
+
+    LaunchedEffect(account.email) {
+        if (lastBackup == 0L && !restoring) {
+            try {
+                val token = silentDriveToken(context, account.email)
+                val remote = token?.let { DriveBackup.find(it) }
+                if (remote != null) {
+                    val time = parseDriveTime(remote.modifiedTime)
+                    saveLastBackupTime(context, time)
+                    lastBackup = time
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("BadgeBackup", "Couldn't read the latest backup time", e)
+            }
+        }
+    }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {

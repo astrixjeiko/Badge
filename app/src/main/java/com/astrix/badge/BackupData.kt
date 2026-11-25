@@ -2,7 +2,10 @@ package com.astrix.badge
 
 import android.content.Context
 import androidx.room.withTransaction
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -145,5 +148,5 @@ suspend fun restoreFromJson(context: Context, json: String) {
         dao.insertRecurringList(backup.recurring)
     }
     if (backup.currency.isNotBlank()) CurrencyStore.set(context, backup.currency)
-    refreshAllWidgets(context)
+    CoroutineScope(SupervisorJob() + Dispatchers.Default).launch { refreshAllWidgets(context) }
 }

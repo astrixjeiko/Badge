@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 fun WelcomeScreen(
     animations: Boolean,
     busy: Boolean,
+    status: String? = null,
     signInButton: @Composable () -> Unit,
     onGuest: () -> Unit
 ) {
@@ -107,15 +108,18 @@ fun WelcomeScreen(
                     Spacer(Modifier.height(8.dp))
                     TextButton(
                         onClick = onGuest,
-                        enabled = !busy,
                         modifier = Modifier.fillMaxWidth().height(56.dp)
-                    ) { Text("Continue as guest") }
+                    ) { Text(if (busy) "Skip" else "Continue as guest") }
                     Box(Modifier.fillMaxWidth().height(12.dp), contentAlignment = Alignment.Center) {
                         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
                     Text(
-                        if (busy) "Signing in and checking for a backup…"
-                        else "You can link a Google account later in Settings.",
+                        if (busy) {
+                            (status ?: "Signing in…") +
+                                    (if (status?.startsWith("Connecting") == true)
+                                        " This can take a minute the first time. You can skip and restore later in Settings."
+                                    else "")
+                        } else "You can link a Google account later in Settings.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center

@@ -3,6 +3,7 @@ package com.astrix.badge
 import android.content.Context
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -56,8 +57,7 @@ class MainActivity : ComponentActivity() {
         GoogleAccountStore.load(this)
         scheduleRecurringChecks(this)
         scheduleAutoBackup(this)
-        // Temp
-        androidx.work.WorkManager.getInstance(this).enqueue(androidx.work.OneTimeWorkRequestBuilder<AutoBackupWorker>().build())
+
         val startTab = intent.getIntExtra(BudgetAlerts.EXTRA_OPEN_TAB, 0).coerceIn(0, 3)
         val prefs = getSharedPreferences("badge_prefs", MODE_PRIVATE)
         if (!prefs.getBoolean("welcome_done", false) && prefs.getBoolean("tour_done", false)) {
@@ -82,6 +82,7 @@ fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = v
     var showWelcome by rememberSaveable { mutableStateOf(welcome) }
     var signingIn by remember { mutableStateOf(false) }
     var restoreEmail by remember { mutableStateOf<String?>(null) }
+    var restoreStatus by remember { mutableStateOf("Connecting to Google…") }
     val finishWelcome: () -> Unit = {
         context.getSharedPreferences("badge_prefs", Context.MODE_PRIVATE)
             .edit { putBoolean("welcome_done", true) }
@@ -290,7 +291,10 @@ fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = v
                                     vm,
                                     onDeleteCategory = deleteCategoryWithUndo,
                                     onDeleteAccount = deleteAccountWithUndo,
-                                    onDeleteButton = deleteButtonWithUndo
+                                    onDeleteButton = deleteButtonWithUndo,
+                                    onSignedIn = { restoreStatus = "Connecting to Google…"; restoreEmail = it },
+                                    restoring = restoreEmail != null,
+                                    restoreStatus = restoreStatus
                                 )
                             }
                         }
@@ -344,6 +348,7 @@ fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = v
                 WelcomeScreen(
                     animations = AnimationStore.enabled,
                     busy = signingIn,
+                    status = if (restoreEmail != null) restoreStatus else null,
                     signInButton = {
                         GoogleSignInButton(
                             modifier = Modifier.fillMaxWidth(),
@@ -354,6 +359,7 @@ fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = v
                                     val result = linkGoogleAccount(context)
                                     result.onSuccess {
                                         GoogleAccountStore.save(context, it)
+                                        restoreStatus = "Connecting to Google…"
                                         restoreEmail = it.email
                                     }
                                     result.onFailure { error ->
@@ -366,11 +372,15 @@ fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = v
                             }
                         )
                     },
-                    onGuest = finishWelcome
+                    onGuest = {
+                        restoreEmail = null
+                        signingIn = false
+                        finishWelcome()
+                    }
                 )
             }
             restoreEmail?.let { email ->
-                AutoRestore(email) { restored ->
+                AutoRestore(email, onStatus = { restoreStatus = it }) { restored ->
                     if (restored) vm.finishTour() // existing user: no tutorial
                     finishWelcome()
                     restoreEmail = null
@@ -390,7 +400,11 @@ fun BadgeApp(startTab: Int = 0, welcome: Boolean = false, vm: BadgeViewModel = v
 }
 
 @Composable
-fun AutoRestore(email: String, onFinished: (restored: Boolean) -> Unit) {
+fun AutoRestore(
+    email: String,
+    onStatus: (String) -> Unit,
+    onFinished: (restored: Boolean) -> Unit
+) {
     val context = LocalContext.current
     val runDrive = rememberDriveRunner(
         email,
@@ -401,13 +415,23 @@ fun AutoRestore(email: String, onFinished: (restored: Boolean) -> Unit) {
         }
     )
     LaunchedEffect(Unit) {
+        val start = SystemClock.elapsedRealtime()
+        fun lap(step: String) =
+            Log.i("BadgeRestore", step + ": " + (SystemClock.elapsedRealtime() - start) + " ms")
+        lap("started")
         runDrive { token ->
+            lap("permission ready")
+            onStatus("Looking for your backup…")
             val remote = DriveBackup.find(token)
+            lap("backup found")
             if (remote == null) {
                 onFinished(false) // new user: continue to the tutorial
             } else {
+                onStatus("Restoring your data…")
                 val json = DriveBackup.download(token, remote.id)
+                lap("downloaded " + json.length / 1024 + " KB")
                 restoreFromJson(context, json)
+                lap("data restored")
                 saveLastBackupTime(context, parseDriveTime(remote.modifiedTime))
                 onFinished(true)
             }
