@@ -600,7 +600,7 @@ private fun GoogleAccountCard(onSignedIn: (String) -> Unit, restoring: Boolean, 
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Spacer(Modifier.height(4.dp))
             Text(
-                restoreStatus + (if (restoreStatus.startsWith("Connecting")) " This can take a while the first time." else ""),
+                restoreStatus,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

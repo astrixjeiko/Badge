@@ -3,7 +3,6 @@ package com.astrix.badge
 import android.content.Context
 import android.os.Bundle
 import android.os.SystemClock
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -415,23 +414,15 @@ fun AutoRestore(
         }
     )
     LaunchedEffect(Unit) {
-        val start = SystemClock.elapsedRealtime()
-        fun lap(step: String) =
-            Log.i("BadgeRestore", step + ": " + (SystemClock.elapsedRealtime() - start) + " ms")
-        lap("started")
         runDrive { token ->
-            lap("permission ready")
             onStatus("Looking for your backup…")
             val remote = DriveBackup.find(token)
-            lap("backup found")
             if (remote == null) {
                 onFinished(false) // new user: continue to the tutorial
             } else {
                 onStatus("Restoring your data…")
                 val json = DriveBackup.download(token, remote.id)
-                lap("downloaded " + json.length / 1024 + " KB")
                 restoreFromJson(context, json)
-                lap("data restored")
                 saveLastBackupTime(context, parseDriveTime(remote.modifiedTime))
                 onFinished(true)
             }

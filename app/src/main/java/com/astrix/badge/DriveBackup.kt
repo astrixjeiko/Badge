@@ -1,7 +1,6 @@
 package com.astrix.badge
 
 import android.content.Context
-import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -99,10 +98,7 @@ object DriveBackup {
         val query = URLEncoder.encode("name='$FILE_NAME'", "UTF-8")
         val fields = URLEncoder.encode("files(id,modifiedTime,size)", "UTF-8")
         val url = "$FILES_URL?spaces=appDataFolder&q=$query&orderBy=modifiedTime%20desc&pageSize=50&fields=$fields"
-        val t0 = SystemClock.elapsedRealtime()
-        val body = open(url, "GET", token).readBody()
-        Log.i("BadgeRestore", "Drive list took " + (SystemClock.elapsedRealtime() - t0) + " ms")
-        val files = JSONObject(body).getJSONArray("files")
+        val files = JSONObject(open(url, "GET", token).readBody()).getJSONArray("files")
         List(files.length()) { i ->
             val f = files.getJSONObject(i)
             RemoteBackup(
@@ -210,10 +206,8 @@ fun rememberDriveRunner(
         } else {
             coroutineScope.launch {
                 try {
-                    val t1 = SystemClock.elapsedRealtime()
                     val auth = Identity.getAuthorizationClient(context)
                         .getAuthorizationResultFromIntent(result.data)
-                    Log.i("BadgeRestore", "permission result read in " + (SystemClock.elapsedRealtime() - t1) + " ms")
                     val token = auth.accessToken
                     if (token == null) onError("Badge needs your permission to use its private backup space in Google Drive.")
                     else action(token)
@@ -232,14 +226,8 @@ fun rememberDriveRunner(
     return { action ->
         coroutineScope.launch {
             onBusy(true)
-            val t0 = SystemClock.elapsedRealtime()
             try {
                 val auth = authorizeDrive(context, email, scope)
-                Log.i(
-                    "BadgeRestore",
-                    "authorize answered in " + (SystemClock.elapsedRealtime() - t0) +
-                            " ms, needs permission screen: " + auth.hasResolution()
-                )
                 if (auth.hasResolution()) {
                     // First time: Google shows its permission screen
                     pending = action

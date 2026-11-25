@@ -114,12 +114,8 @@ fun WelcomeScreen(
                         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
                     Text(
-                        if (busy) {
-                            (status ?: "Signing in…") +
-                                    (if (status?.startsWith("Connecting") == true)
-                                        " This can take a minute the first time. You can skip and restore later in Settings."
-                                    else "")
-                        } else "You can link a Google account later in Settings.",
+                        if (busy) (status ?: "Signing in…")
+                        else "You can link a Google account later in Settings.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
